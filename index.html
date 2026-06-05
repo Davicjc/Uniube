@@ -1,1 +1,336 @@
-hi
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FitAI – Reconhecimento de Exercícios</title>
+  <link rel="stylesheet" href="css/style.css" />
+
+  <!-- Firebase Compat SDK (regular scripts, no bundler needed) -->
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+  <!-- MediaPipe -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js" crossorigin="anonymous"></script>
+</head>
+<body>
+
+  <!-- ===== HEADER ===== -->
+  <header class="app-header">
+    <div class="header-logo">
+      <span class="logo-icon">⚡</span>
+      <span class="logo-text">FitAI</span>
+    </div>
+    <nav class="header-nav">
+      <button class="btn-icon" id="btn-history" title="Histórico">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="12 8 12 12 14 14"/><circle cx="12" cy="12" r="10"/>
+        </svg>
+      </button>
+    </nav>
+  </header>
+
+  <!-- ===== MAIN CONTENT ===== -->
+  <main class="app-main">
+
+    <!-- ======================== SCREEN: HOME ======================== -->
+    <section class="screen active" id="screen-home">
+      <div class="hero">
+        <div class="hero-badge">Powered by MediaPipe AI</div>
+        <h1 class="hero-title">
+          Treine com<br/>
+          <span class="accent-green">Inteligência Artificial</span>
+        </h1>
+        <p class="hero-subtitle">
+          Reconhecimento automático de exercícios em tempo real.<br/>
+          Conte repetições, avalie sua forma e evolua.
+        </p>
+        <button class="btn-primary btn-xl" id="btn-start-workout">
+          <span class="btn-icon-inner">▶</span>
+          Iniciar Treino
+        </button>
+        <button class="btn-secondary" id="btn-record-new-home">
+          + Gravar Novo Exercício
+        </button>
+      </div>
+
+      <div class="quick-stats">
+        <div class="stat-card">
+          <span class="stat-value" id="stat-total-workouts">0</span>
+          <span class="stat-label">Treinos</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-value" id="stat-total-reps">0</span>
+          <span class="stat-label">Repetições</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-value" id="stat-total-score">0</span>
+          <span class="stat-label">Pontos</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-value" id="stat-level">Iniciante</span>
+          <span class="stat-label">Nível</span>
+        </div>
+      </div>
+
+      <div class="exercise-preview">
+        <h2 class="section-title">Exercícios Disponíveis</h2>
+        <div class="exercise-grid">
+          <div class="exercise-chip">🏋️ Agachamento</div>
+          <div class="exercise-chip">⭐ Polichinelo</div>
+          <div class="exercise-chip">💪 Flexão</div>
+          <div class="exercise-chip">🦵 Avanço</div>
+          <div class="exercise-chip">🏃 Joelho Alto</div>
+          <div class="exercise-chip exercise-chip--custom" id="custom-exercises-chip">+ Personalizados</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ======================== SCREEN: WORKOUT ======================== -->
+    <section class="screen" id="screen-workout">
+      <div class="workout-layout">
+
+        <!-- Camera feed -->
+        <div class="camera-container" id="workout-camera">
+          <video id="workout-video" playsinline autoplay muted style="display:none;"></video>
+          <canvas id="workout-canvas"></canvas>
+          <div class="camera-overlay-text" id="camera-status">Inicializando câmera…</div>
+          <div class="landmark-count" id="landmark-info"></div>
+        </div>
+
+        <!-- Info panel -->
+        <div class="workout-panel">
+          <div class="panel-top">
+            <div class="exercise-name-display">
+              <span class="exercise-label">Exercício Detectado</span>
+              <span class="exercise-name" id="exercise-name">—</span>
+            </div>
+            <div class="timer-display" id="timer">00:00</div>
+          </div>
+
+          <div class="rep-section">
+            <span class="rep-label">Repetições</span>
+            <span class="rep-count" id="rep-count">0</span>
+          </div>
+
+          <div class="quality-section">
+            <div class="quality-header">
+              <span class="quality-label">Qualidade</span>
+              <span class="quality-value" id="quality-value">—</span>
+            </div>
+            <div class="quality-bar-track">
+              <div class="quality-bar-fill" id="quality-bar" style="width:0%"></div>
+            </div>
+          </div>
+
+          <div class="score-section">
+            <span class="score-label">Pontuação</span>
+            <span class="score-value" id="workout-score">0</span>
+          </div>
+
+          <div class="feedback-section">
+            <span class="feedback-label">Feedback</span>
+            <div class="feedback-list" id="feedback-text">
+              <p class="feedback-item">Posicione-se em frente à câmera</p>
+            </div>
+          </div>
+
+          <div class="workout-actions">
+            <button class="btn-secondary btn-sm" id="btn-record-new-workout">
+              + Gravar Exercício
+            </button>
+            <button class="btn-danger" id="btn-end-workout">
+              Encerrar Treino
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ======================== SCREEN: RECORD ======================== -->
+    <section class="screen" id="screen-record">
+      <div class="workout-layout">
+
+        <!-- Camera feed -->
+        <div class="camera-container" id="record-camera">
+          <video id="record-video" playsinline autoplay muted style="display:none;"></video>
+          <canvas id="record-canvas"></canvas>
+          <div class="camera-overlay-text" id="record-camera-status">Inicializando câmera…</div>
+          <div class="countdown-display" id="countdown-display" style="display:none;"></div>
+        </div>
+
+        <!-- Record panel -->
+        <div class="workout-panel record-panel">
+          <h2 class="panel-title">Gravar Novo Exercício</h2>
+
+          <div class="input-group">
+            <label for="exercise-name-input" class="input-label">Nome do Exercício</label>
+            <input
+              type="text"
+              id="exercise-name-input"
+              class="input-field"
+              placeholder="Ex: Supino, Desenvolvimento…"
+              maxlength="40"
+            />
+          </div>
+
+          <div class="record-instructions">
+            <h3 class="instructions-title">Como gravar:</h3>
+            <ol class="instructions-list">
+              <li>Digite o nome do exercício acima</li>
+              <li>Clique em <strong>Iniciar Gravação</strong></li>
+              <li>Aguarde a contagem regressiva (3…2…1)</li>
+              <li>Execute o exercício por <strong>5 segundos</strong> mantendo a posição característica</li>
+              <li>Clique em <strong>Salvar</strong> para registrar</li>
+            </ol>
+          </div>
+
+          <div class="recording-status" id="recording-status" style="display:none;">
+            <div class="recording-dot"></div>
+            <span id="recording-status-text">Gravando…</span>
+            <span class="recording-frames" id="recording-frames">0 frames</span>
+          </div>
+
+          <div class="record-actions">
+            <button class="btn-primary" id="btn-start-recording" disabled>
+              ● Iniciar Gravação
+            </button>
+            <button class="btn-accent" id="btn-save-recording" disabled>
+              ✓ Salvar Exercício
+            </button>
+            <button class="btn-secondary" id="btn-cancel-recording">
+              ✕ Cancelar
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ======================== SCREEN: REPORT ======================== -->
+    <section class="screen" id="screen-report">
+      <div class="report-container">
+
+        <div class="report-header">
+          <h1 class="report-title">Relatório do Treino</h1>
+          <div class="report-date" id="report-date"></div>
+        </div>
+
+        <!-- Score circle -->
+        <div class="score-circle-wrapper">
+          <svg class="score-circle-svg" viewBox="0 0 120 120" width="160" height="160">
+            <circle class="score-circle-bg" cx="60" cy="60" r="52" />
+            <circle class="score-circle-fill" id="score-circle-fill" cx="60" cy="60" r="52"
+              stroke-dasharray="327" stroke-dashoffset="327" />
+          </svg>
+          <div class="score-circle-content">
+            <span class="score-circle-value" id="report-score">0</span>
+            <span class="score-circle-label">pontos</span>
+          </div>
+        </div>
+
+        <!-- Summary -->
+        <div class="report-summary-card">
+          <p class="report-summary-text" id="report-summary"></p>
+        </div>
+
+        <!-- Stats row -->
+        <div class="report-stats-row">
+          <div class="report-stat">
+            <span class="report-stat-value" id="report-total-reps">0</span>
+            <span class="report-stat-label">Repetições</span>
+          </div>
+          <div class="report-stat">
+            <span class="report-stat-value" id="report-duration">0:00</span>
+            <span class="report-stat-label">Duração</span>
+          </div>
+          <div class="report-stat">
+            <span class="report-stat-value" id="report-level">Iniciante</span>
+            <span class="report-stat-label">Nível</span>
+          </div>
+        </div>
+
+        <!-- Achievement -->
+        <div class="achievement-card" id="achievement-card" style="display:none;">
+          <div class="achievement-icon" id="achievement-icon"></div>
+          <div class="achievement-info">
+            <div class="achievement-title" id="achievement-title"></div>
+            <div class="achievement-desc" id="achievement-desc"></div>
+          </div>
+        </div>
+
+        <!-- Exercise breakdown table -->
+        <div class="report-section">
+          <h2 class="section-title">Desempenho por Exercício</h2>
+          <div class="exercise-breakdown" id="exercise-breakdown"></div>
+        </div>
+
+        <!-- Improvements -->
+        <div class="report-section" id="improvements-section">
+          <h2 class="section-title">Pontos de Melhoria</h2>
+          <ul class="tips-list" id="improvements-list"></ul>
+        </div>
+
+        <!-- Strengths -->
+        <div class="report-section" id="strengths-section">
+          <h2 class="section-title">Seus Pontos Fortes</h2>
+          <ul class="strengths-list" id="strengths-list"></ul>
+        </div>
+
+        <!-- Next workout suggestion -->
+        <div class="next-workout-card">
+          <div class="next-workout-label">Próximo Treino</div>
+          <p class="next-workout-text" id="next-workout-suggestion"></p>
+        </div>
+
+        <div class="report-actions">
+          <button class="btn-primary btn-xl" id="btn-new-workout">
+            Novo Treino
+          </button>
+          <button class="btn-secondary" id="btn-view-history">
+            Ver Histórico
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ======================== SCREEN: HISTORY ======================== -->
+    <section class="screen" id="screen-history">
+      <div class="history-container">
+        <div class="history-header">
+          <button class="btn-icon back-btn" id="btn-back-history">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="15 18 9 12 15 6"/>
+            </svg>
+          </button>
+          <h1 class="history-title">Histórico de Treinos</h1>
+        </div>
+
+        <div class="history-loading" id="history-loading">
+          <div class="spinner"></div>
+          <span>Carregando histórico…</span>
+        </div>
+
+        <div class="history-empty" id="history-empty" style="display:none;">
+          <div class="empty-icon">📋</div>
+          <p>Nenhum treino registrado ainda.</p>
+          <button class="btn-primary" id="btn-first-workout">Fazer Primeiro Treino</button>
+        </div>
+
+        <div class="history-list" id="history-list"></div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ===== NOTIFICATION TOAST ===== -->
+  <div class="toast" id="toast" role="alert" aria-live="polite"></div>
+
+  <!-- App scripts in dependency order (no ES modules — works with file://) -->
+  <script src="js/config.js"></script>
+  <script src="js/pose.js"></script>
+  <script src="js/classifier.js"></script>
+  <script src="js/report.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
