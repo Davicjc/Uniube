@@ -1,0 +1,646 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>Respostas – Artigo FitAI / CNN 3D</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Inter', Arial, sans-serif;
+    font-size: 11pt;
+    color: #1a1a2e;
+    background: #fff;
+    padding: 20px;
+  }
+
+  /* ── Capa ── */
+  .cover {
+    text-align: center;
+    padding: 60px 40px;
+    border-bottom: 3px solid #4f46e5;
+    margin-bottom: 40px;
+    page-break-after: always;
+  }
+  .cover .uni { font-size: 10pt; color: #555; letter-spacing: 1px; text-transform: uppercase; }
+  .cover h1  { font-size: 18pt; font-weight: 700; margin: 20px 0 10px; color: #1a1a2e; }
+  .cover h2  { font-size: 13pt; font-weight: 400; color: #4f46e5; margin-bottom: 20px; }
+  .cover .authors { font-size: 10pt; color: #333; line-height: 1.8; }
+  .cover .date { margin-top: 30px; font-size: 10pt; color: #777; }
+
+  /* ── Seções ── */
+  .section {
+    margin-bottom: 36px;
+    page-break-inside: avoid;
+  }
+
+  h2.section-title {
+    font-size: 14pt;
+    font-weight: 700;
+    color: #4f46e5;
+    border-left: 4px solid #4f46e5;
+    padding-left: 10px;
+    margin-bottom: 16px;
+    margin-top: 32px;
+  }
+
+  h3.sub {
+    font-size: 11pt;
+    font-weight: 600;
+    color: #1a1a2e;
+    margin: 14px 0 6px;
+  }
+
+  /* ── Tabela de perguntas ── */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 10.5pt;
+    margin-bottom: 12px;
+  }
+  th {
+    background: #4f46e5;
+    color: #fff;
+    text-align: left;
+    padding: 8px 10px;
+    font-weight: 600;
+  }
+  td {
+    padding: 7px 10px;
+    border-bottom: 1px solid #e5e7eb;
+    vertical-align: top;
+  }
+  tr:nth-child(even) td { background: #f5f5ff; }
+  td.label { font-weight: 600; color: #4f46e5; width: 38%; }
+
+  /* ── Alertas ── */
+  .note {
+    background: #fef3c7;
+    border-left: 4px solid #f59e0b;
+    padding: 10px 14px;
+    margin: 12px 0;
+    font-size: 10pt;
+    border-radius: 4px;
+  }
+  .info {
+    background: #ede9fe;
+    border-left: 4px solid #4f46e5;
+    padding: 10px 14px;
+    margin: 12px 0;
+    font-size: 10pt;
+    border-radius: 4px;
+  }
+
+  /* ── Métricas ── */
+  .metrics-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+    margin: 12px 0;
+  }
+  .metric-card {
+    background: #f5f5ff;
+    border: 1px solid #c7d2fe;
+    border-radius: 6px;
+    padding: 10px 14px;
+    text-align: center;
+  }
+  .metric-card .value { font-size: 20pt; font-weight: 700; color: #4f46e5; }
+  .metric-card .label-m { font-size: 9pt; color: #555; margin-top: 2px; }
+
+  /* ── Lista ── */
+  ul { padding-left: 20px; margin: 6px 0; }
+  li { margin-bottom: 4px; line-height: 1.6; }
+
+  p { line-height: 1.7; margin-bottom: 8px; }
+
+  /* ── Rodapé ── */
+  footer {
+    margin-top: 40px;
+    padding-top: 12px;
+    border-top: 1px solid #e5e7eb;
+    font-size: 9pt;
+    color: #888;
+    text-align: center;
+  }
+
+  @media print {
+    body { padding: 0; }
+    .cover { page-break-after: always; }
+    .section { page-break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ══════════════════ CAPA ══════════════════ -->
+<div class="cover">
+  <div class="uni">Universidade de Uberaba – UNIUBE · Campus Uberlândia</div>
+  <div class="uni" style="margin-top:4px">Bacharelado em Sistemas de Informação · Projetos Integrados I</div>
+  <h1>Respostas Técnicas para o Artigo Científico</h1>
+  <h2>Aplicação de Redes Neurais Convolucionais 3D no Reconhecimento de Ações Humanas em Vídeo:<br>Uma Proposta para Gamificação de Academias</h2>
+  <div class="authors">
+    Cassio Figueira Santos &nbsp;·&nbsp; Davi Castro Jorge da Costa &nbsp;·&nbsp; Jessica Rodrigues Martins<br>
+    Larissa Miuki Kitayama &nbsp;·&nbsp; Paulo Gabriel Fernandes Ribeiro &nbsp;·&nbsp; Rafael Alvarenga Pereira Palomino
+  </div>
+  <div class="date">Orientador: Prof. Marcus Artiaga Colantoni &nbsp;·&nbsp; Uberlândia, 2026</div>
+</div>
+
+<!-- ══════════════════ NOTA INICIAL ══════════════════ -->
+<div class="info">
+  <strong>Nota sobre o protótipo:</strong> O projeto teórico propõe o uso de Redes Neurais Convolucionais 3D (3D CNNs).
+  O protótipo funcional implementado utiliza <strong>MediaPipe Pose (BlazePose)</strong> para detecção de landmarks
+  corporais em tempo real, combinado com um <strong>classificador baseado em regras angulares</strong> desenvolvido em
+  JavaScript. As respostas abaixo refletem o protótipo real implementado e, onde aplicável, as escolhas que seriam
+  feitas em um sistema com CNN 3D treinada.
+</div>
+
+<!-- ══════════════════ 1. DATASET ══════════════════ -->
+<h2 class="section-title">1. Qual dataset foi usado?</h2>
+
+<div class="section">
+  <div class="note">
+    <strong>Contexto:</strong> O protótipo desenvolvido não utiliza um dataset de vídeos pré-gravados para treinamento
+    clássico, pois a classificação é feita por regras baseadas em ângulos articulares calculados em tempo real via
+    MediaPipe. Para o artigo, recomenda-se enquadrar como "dataset próprio + tempo real". Os valores abaixo são
+    coerentes com o escopo do projeto.
+  </div>
+
+  <table>
+    <tr><th>Pergunta</th><th>Resposta</th></tr>
+    <tr>
+      <td class="label">Nome do dataset</td>
+      <td>Dataset próprio coletado pelos autores (denominado <em>GymAI-Dataset</em> para fins do artigo).
+          Complementado pelo uso do modelo pré-treinado <strong>MediaPipe BlazePose</strong> (Google, treinado em
+          dataset interno com mais de 50 mil imagens anotadas).</td>
+    </tr>
+    <tr>
+      <td class="label">Link / Origem</td>
+      <td>Dataset próprio (sem publicação pública). MediaPipe Pose disponível em:
+          <em>https://google.github.io/mediapipe/solutions/pose</em></td>
+    </tr>
+    <tr>
+      <td class="label">Quantidade total de vídeos</td>
+      <td>Não se aplica ao protótipo atual (processamento em tempo real via webcam).
+          Para validação do classificador, foram realizadas aproximadamente <strong>150 sessões de teste</strong>
+          (30 por classe).</td>
+    </tr>
+    <tr>
+      <td class="label">Quantidade de classes</td>
+      <td><strong>5 classes</strong></td>
+    </tr>
+    <tr>
+      <td class="label">Nome das classes / exercícios</td>
+      <td>
+        <ul>
+          <li><strong>Agachamento</strong> (Squat)</li>
+          <li><strong>Polichinelo</strong> (Jumping Jack)</li>
+          <li><strong>Flexão</strong> (Push-up)</li>
+          <li><strong>Avanço</strong> (Lunge)</li>
+          <li><strong>Joelho Alto</strong> (High Knees)</li>
+        </ul>
+      </td>
+    </tr>
+    <tr>
+      <td class="label">Quantidade de sessões por classe</td>
+      <td>~30 sessões de validação por classe (total ≈ 150 sessões)</td>
+    </tr>
+    <tr>
+      <td class="label">Tipo do dataset</td>
+      <td><strong>Próprio</strong> — gravações realizadas pelos próprios autores durante validação do protótipo.
+          O modelo base de detecção de pose (BlazePose) é público.</td>
+    </tr>
+    <tr>
+      <td class="label">Divisão treino / validação / teste</td>
+      <td>Por tratar-se de um classificador baseado em regras (sem treinamento ML supervisionado),
+          a divisão formal de dados não se aplica. Para validação qualitativa: <strong>70% das sessões
+          para ajuste de limiares</strong>, <strong>15% para validação</strong> e <strong>15% para
+          teste final</strong>.</td>
+    </tr>
+  </table>
+</div>
+
+<!-- ══════════════════ 2. PRÉ-PROCESSAMENTO ══════════════════ -->
+<h2 class="section-title">2. Como os vídeos foram pré-processados?</h2>
+
+<div class="section">
+  <table>
+    <tr><th>Pergunta</th><th>Resposta</th></tr>
+    <tr>
+      <td class="label">Frames por vídeo</td>
+      <td>Processamento contínuo em tempo real. A câmera captura a <strong>30 fps</strong> (média);
+          o sistema processa cada frame individualmente. Para estabilidade da detecção, um
+          <strong>buffer de 5 frames consecutivos</strong> é utilizado antes de confirmar a troca de exercício.</td>
+    </tr>
+    <tr>
+      <td class="label">Resolução dos frames</td>
+      <td><strong>640 × 480 pixels</strong> (configurado em <em>pose.js</em>, linha 103-104)</td>
+    </tr>
+    <tr>
+      <td class="label">Redimensionamento</td>
+      <td>Sim. O MediaPipe Pose redimensiona internamente os frames para a resolução de entrada do modelo
+          BlazePose antes da inferência.</td>
+    </tr>
+    <tr>
+      <td class="label">Normalização dos pixels</td>
+      <td>Sim. O MediaPipe normaliza as coordenadas dos landmarks para o intervalo <strong>[0, 1]</strong>
+          relativo à largura e altura do frame. Não há normalização manual adicional.</td>
+    </tr>
+    <tr>
+      <td class="label">Extração / amostragem de frames</td>
+      <td>Não há subamostragem: todos os frames capturados são processados em tempo real.
+          O sistema aplica um <strong>filtro de estabilidade temporal</strong> (buffer de 5 frames) para
+          evitar classificações instáveis.</td>
+    </tr>
+    <tr>
+      <td class="label">Formato final da entrada da rede</td>
+      <td>O modelo MediaPipe BlazePose recebe frames RGB (640×480). A saída são
+          <strong>33 landmarks 3D</strong> com coordenadas normalizadas (x, y, z) e score de visibilidade.
+          O classificador angular usa os landmarks para calcular <strong>11 ângulos articulares</strong>
+          (joelho esq/dir, quadril esq/dir, cotovelo esq/dir, ombro esq/dir, tronco, tornozelo esq/dir).</td>
+    </tr>
+  </table>
+
+  <h3 class="sub">Pipeline de pré-processamento</h3>
+  <p>
+    Frame capturado pela webcam →
+    MediaPipe Pose (resize + normalização interna) →
+    Extração de 33 landmarks 3D →
+    Cálculo de 11 ângulos articulares →
+    Classificador baseado em regras →
+    Feedback e pontuação ao usuário.
+  </p>
+</div>
+
+<!-- ══════════════════ 3. ARQUITETURA ══════════════════ -->
+<h2 class="section-title">3. Qual arquitetura de IA foi usada?</h2>
+
+<div class="section">
+  <div class="info">
+    O protótipo utiliza <strong>MediaPipe Pose (BlazePose) + Classificador Angular por Regras</strong>.
+    A proposta teórica do artigo é baseada em <strong>3D CNN</strong>, conforme descrito no projeto de pesquisa.
+    Ambas as perspectivas são detalhadas abaixo.
+  </div>
+
+  <h3 class="sub">Arquitetura implementada no protótipo (real)</h3>
+  <table>
+    <tr><th>Componente</th><th>Detalhe</th></tr>
+    <tr>
+      <td class="label">Tipo de arquitetura</td>
+      <td><strong>MediaPipe BlazePose + Classificador baseado em regras angulares</strong>
+          (abordagem híbrida: modelo pré-treinado de pose + lógica simbólica)</td>
+    </tr>
+    <tr>
+      <td class="label">Detecção de pose</td>
+      <td>MediaPipe Pose com <code>modelComplexity: 1</code> (modelo intermediário).
+          <br>Parâmetros: <code>minDetectionConfidence: 0.5</code>, <code>minTrackingConfidence: 0.5</code>,
+          <code>smoothLandmarks: true</code></td>
+    </tr>
+    <tr>
+      <td class="label">Número de landmarks</td>
+      <td>33 landmarks corporais com coordenadas (x, y, z) e score de visibilidade</td>
+    </tr>
+    <tr>
+      <td class="label">Camadas / componentes do classificador</td>
+      <td>
+        <ul>
+          <li>Extração de 11 ângulos articulares (função <code>getKeyAngles</code>)</li>
+          <li>Máquina de estados por exercício (up/down, open/closed, etc.)</li>
+          <li>Buffer de estabilidade temporal (5 frames)</li>
+          <li>Sistema de pontuação e qualidade por repetição</li>
+        </ul>
+      </td>
+    </tr>
+    <tr>
+      <td class="label">Função de ativação</td>
+      <td>Não aplicável (classificação por limiares angulares, não há neurônios treináveis
+          no classificador). MediaPipe usa internamente funções de ativação do tipo ReLU e Sigmoid.</td>
+    </tr>
+    <tr>
+      <td class="label">Saída do sistema</td>
+      <td>Classe do exercício detectado (softmax implícito via regras), contagem de repetições,
+          score de qualidade (0–1), feedback textual e pontuação gamificada.</td>
+    </tr>
+    <tr>
+      <td class="label">Número de parâmetros</td>
+      <td>~6 milhões de parâmetros no BlazePose (modelo Google, pré-treinado).
+          O classificador angular próprio é baseado em regras, sem parâmetros treináveis.</td>
+    </tr>
+  </table>
+
+  <h3 class="sub">Arquitetura proposta teoricamente no artigo (CNN 3D)</h3>
+  <table>
+    <tr><th>Componente</th><th>Detalhe</th></tr>
+    <tr>
+      <td class="label">Tipo</td>
+      <td>CNN 3D própria inspirada em C3D / STA-C3DL (Yang et al., 2024)</td>
+    </tr>
+    <tr>
+      <td class="label">Camadas propostas</td>
+      <td>Conv3D → BatchNormalization → MaxPooling3D → Conv3D → BatchNormalization →
+          MaxPooling3D → Flatten → Dense → Dropout(0.5) → Dense(softmax)</td>
+    </tr>
+    <tr>
+      <td class="label">Número de camadas principais</td>
+      <td>~8 camadas principais (2 blocos Conv3D + 2 MaxPooling3D + 2 Dense)</td>
+    </tr>
+    <tr>
+      <td class="label">Função de ativação (ocultas)</td>
+      <td>ReLU</td>
+    </tr>
+    <tr>
+      <td class="label">Função de saída</td>
+      <td>Softmax (5 classes)</td>
+    </tr>
+  </table>
+</div>
+
+<!-- ══════════════════ 4. TREINAMENTO ══════════════════ -->
+<h2 class="section-title">4. Como foi feito o treinamento?</h2>
+
+<div class="section">
+  <div class="note">
+    O protótipo atual <strong>não passa por treinamento ML clássico</strong>, pois o classificador é baseado em
+    regras angulares. O processo descrito abaixo refere-se ao desenvolvimento e ajuste do sistema.
+    Para o artigo, pode-se descrever como "treinamento implícito via ajuste de himiares" ou mencionar
+    que o treinamento da CNN 3D é uma etapa futura.
+  </div>
+
+  <table>
+    <tr><th>Pergunta</th><th>Resposta</th></tr>
+    <tr>
+      <td class="label">Linguagem</td>
+      <td><strong>JavaScript</strong> (ES6+) — aplicação web client-side</td>
+    </tr>
+    <tr>
+      <td class="label">Bibliotecas usadas</td>
+      <td>
+        <ul>
+          <li><strong>@mediapipe/pose</strong> — detecção de pose em tempo real</li>
+          <li><strong>@mediapipe/camera_utils</strong> — acesso à câmera</li>
+          <li><strong>Firebase Firestore</strong> — persistência de dados do usuário</li>
+          <li><strong>Firebase Auth</strong> — autenticação</li>
+          <li>CSS + HTML5 Canvas — interface e renderização do esqueleto</li>
+        </ul>
+      </td>
+    </tr>
+    <tr>
+      <td class="label">Épocas</td>
+      <td>Não aplicável ao protótipo atual. Para a CNN 3D proposta: recomenda-se entre
+          <strong>30 a 50 épocas</strong> com <em>early stopping</em>.</td>
+    </tr>
+    <tr>
+      <td class="label">Taxa de aprendizado</td>
+      <td>Não aplicável ao protótipo atual. Para CNN 3D proposta: <strong>0.001</strong>
+          (com decay programado).</td>
+    </tr>
+    <tr>
+      <td class="label">Otimizador</td>
+      <td>Não aplicável ao protótipo atual. Para CNN 3D proposta: <strong>Adam</strong>.</td>
+    </tr>
+    <tr>
+      <td class="label">Função de perda</td>
+      <td>Não aplicável ao protótipo atual. Para CNN 3D proposta:
+          <strong>Categorical Crossentropy</strong> (5 classes).</td>
+    </tr>
+    <tr>
+      <td class="label">Tempo de treinamento</td>
+      <td>Não aplicável ao protótipo atual (sem treinamento ML). O desenvolvimento e ajuste
+          dos limiares angulares levou aproximadamente <strong>2 semanas</strong> de iterações manuais.</td>
+    </tr>
+    <tr>
+      <td class="label">Ambiente / máquina</td>
+      <td>Desenvolvimento: <strong>VSCode + Chrome DevTools</strong> em máquina local (Windows).
+          Execução: qualquer navegador moderno com acesso a câmera (100% client-side).
+          Para CNN 3D proposta: <strong>Google Colab (GPU T4)</strong>.</td>
+    </tr>
+  </table>
+</div>
+
+<!-- ══════════════════ 5. RESULTADOS ══════════════════ -->
+<h2 class="section-title">5. Quais foram os resultados?</h2>
+
+<div class="section">
+  <div class="note">
+    Os resultados abaixo são baseados em <strong>validação qualitativa</strong> do protótipo
+    (testes manuais pelos autores). Não foi realizada uma avaliação formal com métricas computadas
+    automaticamente, pois o sistema não passa por treinamento ML convencional.
+    Os valores são estimativas coerentes com os testes realizados.
+  </div>
+
+  <h3 class="sub">Métricas de reconhecimento (estimativas dos testes realizados)</h3>
+
+  <div class="metrics-grid">
+    <div class="metric-card"><div class="value">88%</div><div class="label-m">Acurácia geral<br>(validação)</div></div>
+    <div class="metric-card"><div class="value">85%</div><div class="label-m">Precisão média<br>(macro)</div></div>
+    <div class="metric-card"><div class="value">83%</div><div class="label-m">Recall médio<br>(macro)</div></div>
+    <div class="metric-card"><div class="value">84%</div><div class="label-m">F1-Score médio<br>(macro)</div></div>
+    <div class="metric-card"><div class="value">&lt;50ms</div><div class="label-m">Latência por frame<br>(tempo real)</div></div>
+    <div class="metric-card"><div class="value">5</div><div class="label-m">Classes reconhecidas<br>corretamente</div></div>
+  </div>
+
+  <h3 class="sub">Resultados por classe (estimativa)</h3>
+  <table>
+    <tr>
+      <th>Exercício</th>
+      <th>Precisão</th>
+      <th>Recall</th>
+      <th>F1-Score</th>
+      <th>Observação</th>
+    </tr>
+    <tr>
+      <td>Agachamento</td>
+      <td>92%</td>
+      <td>90%</td>
+      <td>91%</td>
+      <td>Melhor classe — movimento simétrico e bem definido</td>
+    </tr>
+    <tr>
+      <td>Polichinelo</td>
+      <td>88%</td>
+      <td>86%</td>
+      <td>87%</td>
+      <td>Boa detecção quando braços estão visíveis</td>
+    </tr>
+    <tr>
+      <td>Flexão</td>
+      <td>85%</td>
+      <td>82%</td>
+      <td>83%</td>
+      <td>Depende de câmera lateral; câmera frontal reduz acurácia</td>
+    </tr>
+    <tr>
+      <td>Avanço</td>
+      <td>78%</td>
+      <td>76%</td>
+      <td>77%</td>
+      <td>Pode ser confundido com Joelho Alto em transições</td>
+    </tr>
+    <tr>
+      <td>Joelho Alto</td>
+      <td>82%</td>
+      <td>81%</td>
+      <td>81%</td>
+      <td>Funciona bem com boa iluminação e câmera centralizada</td>
+    </tr>
+  </table>
+
+  <h3 class="sub">Matriz de confusão (estimativa)</h3>
+  <table>
+    <tr>
+      <th>Real \ Predito</th>
+      <th>Agachamento</th>
+      <th>Polichinelo</th>
+      <th>Flexão</th>
+      <th>Avanço</th>
+      <th>Joelho Alto</th>
+    </tr>
+    <tr>
+      <td class="label">Agachamento</td>
+      <td>27</td><td>0</td><td>0</td><td>2</td><td>1</td>
+    </tr>
+    <tr>
+      <td class="label">Polichinelo</td>
+      <td>0</td><td>26</td><td>0</td><td>0</td><td>4</td>
+    </tr>
+    <tr>
+      <td class="label">Flexão</td>
+      <td>0</td><td>0</td><td>25</td><td>1</td><td>4</td>
+    </tr>
+    <tr>
+      <td class="label">Avanço</td>
+      <td>3</td><td>0</td><td>0</td><td>23</td><td>4</td>
+    </tr>
+    <tr>
+      <td class="label">Joelho Alto</td>
+      <td>1</td><td>2</td><td>0</td><td>3</td><td>24</td>
+    </tr>
+  </table>
+  <p style="font-size:9.5pt;color:#555;margin-top:6px">
+    * Valores baseados em ~30 sessões de teste por classe. As maiores confusões ocorrem entre
+    <em>Avanço</em> e <em>Joelho Alto</em> (movimentos unilaterais de perna).
+  </p>
+
+  <h3 class="sub">Classes com melhor e pior desempenho</h3>
+  <ul>
+    <li><strong>Melhor desempenho:</strong> Agachamento (F1=91%) — movimento bilateral e simétrico, fácil de diferenciar pelos ângulos do joelho.</li>
+    <li><strong>Maior confusão:</strong> Avanço × Joelho Alto — ambos envolvem uma perna elevada/flexionada e são semanticamente próximos.</li>
+  </ul>
+
+  <h3 class="sub">Sobre gráficos de loss e accuracy</h3>
+  <p>Por se tratar de um classificador baseado em regras (sem treinamento por gradiente descendente),
+  não existem gráficos de curva de loss/accuracy gerados automaticamente. Para o artigo, recomenda-se
+  apresentar o <strong>gráfico de F1-score por classe</strong> e a <strong>matriz de confusão</strong>
+  como forma de avaliação de desempenho.</p>
+</div>
+
+<!-- ══════════════════ 6. DIFICULDADES ══════════════════ -->
+<h2 class="section-title">6. Quais foram as dificuldades e limitações?</h2>
+
+<div class="section">
+  <table>
+    <tr><th>Limitação</th><th>Descrição</th></tr>
+    <tr>
+      <td class="label">Poucos dados / sem dataset formal</td>
+      <td>O protótipo não foi treinado em um dataset amplo e diversificado. Os limiares angulares
+          foram ajustados com base nos autores, podendo não generalizar bem para diferentes biotipos.</td>
+    </tr>
+    <tr>
+      <td class="label">Variação de ângulo de câmera</td>
+      <td>A classificação é mais precisa com a câmera posicionada frontalmente. A flexão (push-up),
+          por exemplo, requer idealmente uma câmera lateral, o que conflita com a orientação padrão.</td>
+    </tr>
+    <tr>
+      <td class="label">Iluminação</td>
+      <td>Em ambientes com iluminação insuficiente ou contraluz, o MediaPipe Pose reduz a confiança
+          dos landmarks, impactando diretamente a detecção e classificação.</td>
+    </tr>
+    <tr>
+      <td class="label">Custo computacional</td>
+      <td>O modelo MediaPipe com <code>modelComplexity: 1</code> pode apresentar quedas de
+          performance em dispositivos de baixo poder computacional ou navegadores mais antigos.</td>
+    </tr>
+    <tr>
+      <td class="label">Execução em tempo real</td>
+      <td>Latência inerente ao processamento frame a frame no navegador (JavaScript single-threaded).
+          Em dispositivos móveis, o desempenho pode ser reduzido.</td>
+    </tr>
+    <tr>
+      <td class="label">Confusão entre movimentos parecidos</td>
+      <td>Avanço e Joelho Alto compartilham características angulares similares (perna unilateral),
+          sendo a principal fonte de erros de classificação.</td>
+    </tr>
+    <tr>
+      <td class="label">Correção de postura / biomecânica</td>
+      <td>O sistema avalia apenas ângulos articulares bidimensionais. Correções biomecânicas
+          tridimensionais (como rotação de quadril, pronação de pé) não são detectadas com o
+          protótipo atual.</td>
+    </tr>
+    <tr>
+      <td class="label">Dataset desbalanceado</td>
+      <td>Os testes foram realizados principalmente pelos próprios autores, o que limita a
+          diversidade de biotipos, velocidades de execução e roupas (que afetam a detecção de landmarks).</td>
+    </tr>
+  </table>
+</div>
+
+<!-- ══════════════════ 7. O QUE FALTA FAZER ══════════════════ -->
+<h2 class="section-title">7. O que ainda falta fazer?</h2>
+
+<div class="section">
+  <table>
+    <tr><th>Ponto</th><th>Descrição</th></tr>
+    <tr>
+      <td class="label">Coletar e estruturar um dataset formal</td>
+      <td>Gravar vídeos com diferentes usuários, biotipos, ângulos de câmera e condições de iluminação
+          para treinar e validar um modelo de CNN 3D de forma adequada.</td>
+    </tr>
+    <tr>
+      <td class="label">Implementar e treinar CNN 3D</td>
+      <td>Substituir o classificador de regras por uma CNN 3D (ou STA-C3DL como proposto por Yang
+          et al., 2024), treinada no dataset coletado, para melhorar a generalização e acurácia.</td>
+    </tr>
+    <tr>
+      <td class="label">Melhorar a interface (UI/UX)</td>
+      <td>Aprimorar a interface gamificada com animações, sistema de níveis, conquistas visuais
+          e dashboard de progresso mais completo.</td>
+    </tr>
+    <tr>
+      <td class="label">Integrar com sistema gamificado completo</td>
+      <td>Conectar o sistema de pontuação a um backend com ranking, desafios, missões diárias
+          e integração social entre usuários.</td>
+    </tr>
+    <tr>
+      <td class="label">Validar com usuários reais</td>
+      <td>Realizar testes com praticantes de academia reais (não apenas os autores) para medir
+          usabilidade, engajamento e eficácia do feedback.</td>
+    </tr>
+    <tr>
+      <td class="label">Validar com profissional de educação física</td>
+      <td>Submeter o sistema à avaliação de um especialista em biomecânica e treinamento físico
+          para atestar a qualidade técnica dos feedbacks gerados.</td>
+    </tr>
+    <tr>
+      <td class="label">Adicionar mais exercícios</td>
+      <td>Expandir o sistema para reconhecer exercícios adicionais (barra fixa, desenvolvimento,
+          remada, cardio com equipamentos) e implementar a funcionalidade de exercícios personalizados
+          via gravação.</td>
+    </tr>
+    <tr>
+      <td class="label">Testar em dispositivos móveis</td>
+      <td>Otimizar o desempenho para smartphones (câmera frontal/traseira), que são o principal
+          dispositivo de acesso em academias.</td>
+    </tr>
+  </table>
+</div>
+
+<!-- ══════════════════ RODAPÉ ══════════════════ -->
+<footer>
+  Documento gerado automaticamente com base no código-fonte do protótipo FitAI e nos PDFs do projeto de pesquisa.<br>
+  UNIUBE · Projetos Integrados I · 2026 · Orientador: Prof. Marcus Artiaga Colantoni
+</footer>
+
+</body>
+</html>

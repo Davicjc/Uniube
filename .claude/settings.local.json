@@ -3,7 +3,9 @@
     "allow": [
       "PowerShell(Get-ChildItem \"C:\\\\Users\\\\davic\\\\Desktop\\\\teste\" -Recurse | Where-Object { !$_.PSIsContainer } | Select-Object FullName, @{Name=\"Size\\(KB\\)\";Expression={[math]::Round\\($_.Length/1KB,1\\)}} | Format-Table -AutoSize)",
       "Bash(python3 *)",
-      "Bash(grep -n \"\\\\$\\(\" /c/Users/davic/Desktop/teste/js/app.js)"
+      "Bash(grep -n \"\\\\$\\(\" /c/Users/davic/Desktop/teste/js/app.js)",
+      "Bash(start *)",
+      "Bash(python gerar_pdf.py)"
     ]
   }
 }
