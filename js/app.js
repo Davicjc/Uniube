@@ -4,13 +4,16 @@
  * Depends on config.js, pose.js, classifier.js, report.js being loaded first.
  */
 
-// Convenience aliases – use || {} so a missing global never crashes the whole script
-const { saveWorkout, getWorkouts, saveCustomExercise, getCustomExercises } =
-  window.FitAIConfig || {};
-const PoseDetector       = window.PoseDetector       || null;
-const ExerciseClassifier = window.ExerciseClassifier || null;
-const ExerciseRecorder   = window.ExerciseRecorder   || null;
-const generateReport     = window.generateReport     || function() { return {}; };
+// Read external dependencies with underscore-prefixed names to avoid
+// SyntaxError: multiple <script> tags share the global lexical scope, so
+// re-declaring names already bound by config.js / pose.js / classifier.js
+// (as functions or classes) throws "Identifier has already been declared".
+const _cfg                = window.FitAIConfig        || {};
+const _saveWorkout        = _cfg.saveWorkout           || function() {};
+const _getWorkouts        = _cfg.getWorkouts           || function() { return []; };
+const _saveCustomExercise = _cfg.saveCustomExercise    || function() {};
+const _getCustomExercises = _cfg.getCustomExercises    || function() { return []; };
+const _generateReport     = window.generateReport      || function() { return {}; };
 
 // ════════════════════════════════════════════════════════════════════════════
 // APPLICATION STATE
@@ -111,7 +114,7 @@ async function initPose(videoId, canvasId, onResults) {
   const canvas = $(canvasId);
   if (!video || !canvas) return null;
 
-  const detector = new PoseDetector(video, canvas, onResults);
+  const detector = new window.PoseDetector(video, canvas, onResults);
 
   try {
     await detector.init();
@@ -128,12 +131,12 @@ async function initPose(videoId, canvasId, onResults) {
 // WORKOUT
 // ════════════════════════════════════════════════════════════════════════════
 async function startWorkout() {
-  if (!ExerciseClassifier) {
+  if (!window.ExerciseClassifier) {
     showToast('Erro: módulo de classificação não carregou. Verifique a internet e recarregue.', 'error', 6000);
     console.error('[FitAI] ExerciseClassifier is null – classifier.js may have failed to load');
     return;
   }
-  if (!PoseDetector) {
+  if (!window.PoseDetector) {
     showToast('Erro: módulo de pose não carregou. Verifique a internet e recarregue.', 'error', 6000);
     console.error('[FitAI] PoseDetector is null – pose.js may have failed to load');
     return;
@@ -152,7 +155,7 @@ async function startWorkout() {
   };
 
   // Create classifier
-  state.classifier = new ExerciseClassifier();
+  state.classifier = new window.ExerciseClassifier();
   state.classifier.setCustomExercises(state.customExercises);
 
   showScreen('workout');
@@ -347,7 +350,7 @@ async function endWorkout() {
   };
 
   // Generate report
-  const report = generateReport(workoutData);
+  const report = _generateReport(workoutData);
 
   // Update local stats
   const newStats = {
@@ -359,7 +362,7 @@ async function endWorkout() {
 
   // Save to Firestore / localStorage
   try {
-    await saveWorkout({
+    await _saveWorkout({
       ...workoutData,
       report: {
         summary:    report.summary,
@@ -501,7 +504,7 @@ function animateScoreCircle(score) {
 // RECORDING
 // ════════════════════════════════════════════════════════════════════════════
 async function openRecordScreen() {
-  if (!PoseDetector) {
+  if (!window.PoseDetector) {
     showToast('Erro: módulo de câmera não carregou. Verifique a internet e recarregue.', 'error', 6000);
     console.error('[FitAI] PoseDetector is null – pose.js may have failed to load');
     return;
@@ -558,7 +561,7 @@ function onRecordPoseResults(results) {
   if (!state.recording.active) return;
   if (!results.poseLandmarks) return;
 
-  const angles = PoseDetector.getKeyAngles(results.poseLandmarks);
+  const angles = window.PoseDetector.getKeyAngles(results.poseLandmarks);
   if (angles && state.recording.recorder) {
     state.recording.recorder.addFrame(angles);
     $('recording-frames').textContent = `${state.recording.recorder.frameCount} frames`;
@@ -604,7 +607,7 @@ async function startRecording() {
   await startCountdown(name);
 
   // Init recorder
-  state.recording.recorder = new ExerciseRecorder();
+  state.recording.recorder = new window.ExerciseRecorder();
   state.recording.recorder.startRecording(name);
   state.recording.active      = true;
   state.recording.exerciseName = name;
@@ -657,7 +660,7 @@ async function saveRecording() {
   $('btn-save-recording').disabled = true;
 
   try {
-    const id = await saveCustomExercise(template);
+    const id = await _saveCustomExercise(template);
     template.id = id;
     state.customExercises.push(template);
     showToast(`"${template.name}" salvo com sucesso!`, 'success');
@@ -698,7 +701,7 @@ async function loadHistory() {
   $('history-list').innerHTML        = '';
 
   try {
-    const workouts = await getWorkouts();
+    const workouts = await _getWorkouts();
     $('history-loading').style.display = 'none';
 
     if (!workouts || workouts.length === 0) {
@@ -816,8 +819,8 @@ function init() {
 
 async function _loadCustomExercises() {
   try {
-    if (typeof getCustomExercises !== 'function') return;
-    state.customExercises = await getCustomExercises();
+    if (typeof _getCustomExercises !== 'function') return;
+    state.customExercises = await _getCustomExercises();
     const chip = $('custom-exercises-chip');
     if (state.customExercises.length > 0 && chip) {
       chip.textContent =
