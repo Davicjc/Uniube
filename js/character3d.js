@@ -1,5 +1,7 @@
-// character3d.js – Animated 3D stick-figure preview for FitAI demo screen
-// Requires Three.js (r128+) loaded before this script.
+// character3d.js
+// personagem 3D animado pra mostrar como cada exercício é feito
+// usa Three.js (r128+) que tem q estar carregado antes desse arquivo no HTML
+// aprendi Three.js pra fazer isso – ficou legal, mas deu bastante trabalho
 (function () {
 'use strict';
 
@@ -9,7 +11,8 @@ if (typeof THREE === 'undefined') {
   return;
 }
 
-// ── Exercise → animation type ────────────────────────────────────────────────
+// === MAPA DE ANIMAÇÕES POR EXERCÍCIO ===
+// cada nome de exercício mapeia pra um tipo de animação pré-pronto
 const ANIM_TYPE = {
   'Agachamento':'squat','Agachamento Sumô':'squat','Agachamento Plié':'squat',
   'Agachamento Isométrico':'squat','Agachamento com Salto':'jack',
@@ -61,7 +64,8 @@ const ANIM_TYPE = {
 };
 function animType(name){ return ANIM_TYPE[name] || 'default'; }
 
-// ── Joint / bone structure ───────────────────────────────────────────────────
+// articulações e ossos do personagem
+// JOINTS = os pontos; BONES = os pares de pontos que formam os "ossos"
 const JOINTS = ['pelvis','chest','neck','head',
   'lShoulder','lElbow','lWrist',
   'rShoulder','rElbow','rWrist',
@@ -76,10 +80,13 @@ const BONES = [
   ['pelvis','rHip'],['rHip','rKnee'],['rKnee','rAnkle'],
 ];
 
-// ── Poses (x=left/right, y=up, z=toward camera) ─────────────────────────────
+// helper pra criar coordenadas 3D: x=esquerda/direita, y=cima, z=frente/trás
 function j(x,y,z){return{x,y,z};}
 
-// Standing ─────────────────────────────────────────────────────────────────
+// === POSES PRÉ-DEFINIDAS ===
+// cada pose define a posição de cada articulação no espaço 3D
+// interpolo entre duas poses (A e B) pra criar a animação
+
 const STAND = {
   pelvis:j(0,.95,0),  chest:j(0,1.35,0),  neck:j(0,1.55,0), head:j(0,1.72,0),
   lShoulder:j(-.22,1.48,0), lElbow:j(-.38,1.18,.04), lWrist:j(-.48,.88,.05),
@@ -88,7 +95,6 @@ const STAND = {
   rHip:j( .12,.93,0), rKnee:j( .14,.52,0), rAnkle:j( .12,.05,0),
 };
 
-// Squat bottom ─────────────────────────────────────────────────────────────
 const SQUAT = {
   pelvis:j(0,.42,.05), chest:j(.04,.82,.08), neck:j(.04,1.02,.06), head:j(.04,1.19,.04),
   lShoulder:j(-.18,.92,.08), lElbow:j(-.18,.65,.22), lWrist:j(-.10,.50,.28),
@@ -97,7 +103,6 @@ const SQUAT = {
   rHip:j( .18,.40,.05), rKnee:j( .25,.22,.22), rAnkle:j( .18,.05,.02),
 };
 
-// Jumping jack – open ──────────────────────────────────────────────────────
 const JACK = {
   pelvis:j(0,.95,0), chest:j(0,1.35,0), neck:j(0,1.55,0), head:j(0,1.72,0),
   lShoulder:j(-.22,1.48,0), lElbow:j(-.55,1.70,.02), lWrist:j(-.78,1.90,.02),
@@ -106,7 +111,6 @@ const JACK = {
   rHip:j( .12,.93,0), rKnee:j( .35,.52,0), rAnkle:j( .48,.05,0),
 };
 
-// Lunge – down ─────────────────────────────────────────────────────────────
 const LUNGE = {
   pelvis:j(0,.65,.10), chest:j(0,1.05,.05), neck:j(0,1.25,.02), head:j(0,1.42,0),
   lShoulder:j(-.20,1.15,0), lElbow:j(-.38,.90,.05), lWrist:j(-.48,.65,.05),
@@ -115,7 +119,6 @@ const LUNGE = {
   rHip:j( .12,.62,.10), rKnee:j( .13,.18,-.22), rAnkle:j( .12,.05,-.35),
 };
 
-// High knee – left ─────────────────────────────────────────────────────────
 const HK_L = {
   pelvis:j(0,.92,0), chest:j(0,1.32,0), neck:j(0,1.52,0), head:j(0,1.68,0),
   lShoulder:j(-.22,1.44,0), lElbow:j(-.40,1.18,.14), lWrist:j(-.50,.92,.22),
@@ -124,7 +127,6 @@ const HK_L = {
   rHip:j( .12,.90,0), rKnee:j( .14,.50,0),    rAnkle:j( .12,.05,0),
 };
 
-// High knee – right ────────────────────────────────────────────────────────
 const HK_R = {
   pelvis:j(0,.92,0), chest:j(0,1.32,0), neck:j(0,1.52,0), head:j(0,1.68,0),
   lShoulder:j(-.22,1.44,0), lElbow:j(-.40,1.18,-.14),lWrist:j(-.50,.92,-.22),
@@ -133,7 +135,6 @@ const HK_R = {
   rHip:j( .12,.90,0), rKnee:j( .14,1.18,.08), rAnkle:j( .14,.85,.12),
 };
 
-// Bridge – lying flat (knees bent) ─────────────────────────────────────────
 const BRIDGE_D = {
   head:j(0,.18,.88),   neck:j(0,.14,.70),   chest:j(0,.10,.38),  pelvis:j(0,.08,0),
   lShoulder:j(-.28,.12,.38),lElbow:j(-.48,.10,.30),lWrist:j(-.62,.08,.18),
@@ -142,7 +143,6 @@ const BRIDGE_D = {
   rHip:j( .14,.08,-.05),rKnee:j( .16,.40,-.25),rAnkle:j( .15,.06,-.45),
 };
 
-// Bridge – hips up ─────────────────────────────────────────────────────────
 const BRIDGE_U = {
   head:j(0,.20,.88),   neck:j(0,.16,.70),   chest:j(0,.28,.36),  pelvis:j(0,.55,-.05),
   lShoulder:j(-.28,.14,.36),lElbow:j(-.46,.10,.28),lWrist:j(-.60,.08,.16),
@@ -151,7 +151,6 @@ const BRIDGE_U = {
   rHip:j( .15,.50,-.08),rKnee:j( .16,.38,-.32),rAnkle:j( .14,.06,-.48),
 };
 
-// Crunch – flat ────────────────────────────────────────────────────────────
 const CRUNCH_D = {
   head:j(0,.18,.88),   neck:j(0,.14,.70),   chest:j(0,.10,.38),  pelvis:j(0,.08,0),
   lShoulder:j(-.24,.10,.38),lElbow:j(-.10,.22,.58),lWrist:j(-.03,.28,.68),
@@ -160,7 +159,6 @@ const CRUNCH_D = {
   rHip:j( .12,.08,-.05),rKnee:j( .13,.08,-.42),rAnkle:j( .12,.05,-.80),
 };
 
-// Crunch – up ──────────────────────────────────────────────────────────────
 const CRUNCH_U = {
   head:j(0,.48,.55),  neck:j(0,.34,.55),   chest:j(0,.22,.42),  pelvis:j(0,.10,0),
   lShoulder:j(-.22,.30,.42),lElbow:j(-.10,.40,.52),lWrist:j(-.02,.47,.60),
@@ -169,7 +167,6 @@ const CRUNCH_U = {
   rHip:j( .12,.10,-.05),rKnee:j( .14,.42,-.18),rAnkle:j( .13,.06,-.38),
 };
 
-// Plank ────────────────────────────────────────────────────────────────────
 const PLANK_A = {
   head:j(0,.34,.88),  neck:j(0,.28,.70),   chest:j(0,.30,.38),  pelvis:j(0,.22,-.22),
   lShoulder:j(-.24,.34,.38),lElbow:j(-.28,.22,.12),lWrist:j(-.28,.12,-.05),
@@ -185,7 +182,6 @@ const PLANK_B = {
   rHip:j( .12,.18,-.24),rKnee:j( .13,.14,-.62),rAnkle:j( .12,.08,-.88),
 };
 
-// Push-up – up ─────────────────────────────────────────────────────────────
 const PUSH_U = {
   head:j(0,.42,.90),  neck:j(0,.35,.72),   chest:j(0,.42,.40),  pelvis:j(0,.30,-.28),
   lShoulder:j(-.23,.46,.40),lElbow:j(-.28,.30,.14),lWrist:j(-.28,.14,-.04),
@@ -194,7 +190,6 @@ const PUSH_U = {
   rHip:j( .12,.28,-.30),rKnee:j( .13,.17,-.67),rAnkle:j( .12,.10,-.90),
 };
 
-// Push-up – down ───────────────────────────────────────────────────────────
 const PUSH_D = {
   head:j(0,.24,.90),  neck:j(0,.17,.72),   chest:j(0,.20,.40),  pelvis:j(0,.28,-.28),
   lShoulder:j(-.23,.28,.40),lElbow:j(-.38,.25,.36),lWrist:j(-.38,.11,.16),
@@ -203,7 +198,6 @@ const PUSH_D = {
   rHip:j( .12,.25,-.30),rKnee:j( .13,.14,-.67),rAnkle:j( .12,.08,-.90),
 };
 
-// Curl – down / up ─────────────────────────────────────────────────────────
 const CURL_D = {
   pelvis:j(0,.95,0), chest:j(0,1.35,0), neck:j(0,1.55,0), head:j(0,1.72,0),
   lShoulder:j(-.22,1.48,0),lElbow:j(-.30,1.20,.05),lWrist:j(-.35,.88,.05),
@@ -219,7 +213,6 @@ const CURL_U = {
   rHip:j( .12,.93,0),rKnee:j( .14,.52,0),rAnkle:j( .12,.05,0),
 };
 
-// Row – down / up ──────────────────────────────────────────────────────────
 const ROW_D = {
   pelvis:j(0,.95,0), chest:j(.12,1.25,0), neck:j(.10,1.45,0), head:j(.08,1.62,0),
   lShoulder:j(-.22,1.35,0),lElbow:j(-.55,1.38,-.05),lWrist:j(-.72,1.35,-.05),
@@ -235,7 +228,6 @@ const ROW_U = {
   rHip:j( .12,.93,0),rKnee:j( .14,.52,0),rAnkle:j( .12,.05,0),
 };
 
-// Tricep – down / up ───────────────────────────────────────────────────────
 const TRI_D = {
   pelvis:j(0,.95,0), chest:j(0,1.35,0), neck:j(0,1.55,0), head:j(0,1.72,0),
   lShoulder:j(-.22,1.48,0),lElbow:j(-.28,1.50,.05),lWrist:j(-.28,1.20,.10),
@@ -251,7 +243,6 @@ const TRI_U = {
   rHip:j( .12,.93,0),rKnee:j( .14,.52,0),rAnkle:j( .12,.05,0),
 };
 
-// Calf raise ───────────────────────────────────────────────────────────────
 const CALF_U = {
   pelvis:j(0,.98,0), chest:j(0,1.38,0), neck:j(0,1.58,0), head:j(0,1.75,0),
   lShoulder:j(-.22,1.50,0),lElbow:j(-.38,1.22,.04),lWrist:j(-.48,.92,.05),
@@ -260,7 +251,6 @@ const CALF_U = {
   rHip:j( .12,.96,0),rKnee:j( .14,.54,0),rAnkle:j( .12,.17,0),
 };
 
-// Step up ──────────────────────────────────────────────────────────────────
 const STEP_U = {
   pelvis:j(0,1.12,0), chest:j(0,1.52,0), neck:j(0,1.72,0), head:j(0,1.88,0),
   lShoulder:j(-.22,1.64,0),lElbow:j(-.38,1.36,.04),lWrist:j(-.48,1.06,.05),
@@ -269,7 +259,6 @@ const STEP_U = {
   rHip:j( .12,1.10,0),rKnee:j( .14,.52,0),rAnkle:j( .12,.05,0),
 };
 
-// Sway (default) ───────────────────────────────────────────────────────────
 const SWAY = {
   pelvis:j(0,.95,0), chest:j(0,1.35,0), neck:j(0,1.55,0), head:j(0,1.72,0),
   lShoulder:j(-.22,1.48,0),lElbow:j(-.42,1.26,-.06),lWrist:j(-.55,1.02,-.08),
@@ -278,11 +267,11 @@ const SWAY = {
   rHip:j( .12,.93,0),rKnee:j( .14,.52,0),rAnkle:j( .12,.05,0),
 };
 
-// Motion threshold (character units): joints with less range of motion stay still
+// articulações com range de movimento menor que isso ficam paradas no playback gravado
 const MOTION_THRESH = 0.04;
 
-// ── Animation config table ───────────────────────────────────────────────────
-// camY: camera look-at Y target (adjusts for floor vs standing exercises)
+// === CONFIGURAÇÃO DAS ANIMAÇÕES ===
+// cada tipo tem dois keyframes (a=início, b=fim), velocidade e posição da câmera
 const ANIMS = {
   squat:    {a:STAND,   b:SQUAT,   speed:.022, camY:.9},
   pushup:   {a:PUSH_U,  b:PUSH_D,  speed:.025, camY:.44},
@@ -300,12 +289,13 @@ const ANIMS = {
   default:  {a:STAND,   b:SWAY,    speed:.015, camY:.9},
 };
 
-// ── Main class ───────────────────────────────────────────────────────────────
+// === CLASSE PRINCIPAL ===
 class FitAIChar {
   constructor(canvasId) {
     this._canvas = document.getElementById(canvasId);
     if (!this._canvas) { console.warn('[FitAI] canvas #'+canvasId+' not found'); return; }
 
+    // configuração da cena Three.js
     this._scene    = new THREE.Scene();
     this._renderer = new THREE.WebGLRenderer({canvas:this._canvas, antialias:true, alpha:true});
     this._renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -316,7 +306,7 @@ class FitAIChar {
     this._camLookY = .9;
     this._camTargY = .9;
 
-    // Lights
+    // iluminação: luz ambiente verde escura + dois pontos de luz coloridos
     this._scene.add(new THREE.AmbientLight(0x113322, 3));
     const pl = new THREE.PointLight(0x00ff88, 4, 12);
     pl.position.set(0, 2.5, 2);
@@ -325,7 +315,7 @@ class FitAIChar {
     pl2.position.set(-2, 1.5, 1);
     this._scene.add(pl2);
 
-    // Ground glow disc
+    // disco de brilho no chão
     const gMesh = new THREE.Mesh(
       new THREE.CircleGeometry(.9, 32),
       new THREE.MeshBasicMaterial({color:0x00ff44, transparent:true, opacity:.07, side:THREE.DoubleSide})
@@ -334,12 +324,12 @@ class FitAIChar {
     gMesh.position.y = .005;
     this._scene.add(gMesh);
 
-    // Materials
-    const boneMat  = new THREE.MeshPhongMaterial({color:0x00dd77, emissive:0x002211, shininess:55});
-    const jntMat   = new THREE.MeshPhongMaterial({color:0x44ffaa, emissive:0x003322, shininess:90});
-    const headMat  = new THREE.MeshPhongMaterial({color:0x22ccaa, emissive:0x002211, shininess:45});
+    // materiais dos ossos e articulações
+    const boneMat = new THREE.MeshPhongMaterial({color:0x00dd77, emissive:0x002211, shininess:55});
+    const jntMat  = new THREE.MeshPhongMaterial({color:0x44ffaa, emissive:0x003322, shininess:90});
+    const headMat = new THREE.MeshPhongMaterial({color:0x22ccaa, emissive:0x002211, shininess:45});
 
-    // Build joints (spheres)
+    // cria as esferas pras articulações
     this._sph = {};
     for (const name of JOINTS) {
       const isHead = name==='head';
@@ -350,7 +340,7 @@ class FitAIChar {
       this._sph[name] = m;
     }
 
-    // Build bones (cylinders, unit-height, scaled at runtime)
+    // cria os cilindros pros ossos – escalo a altura em tempo real
     this._cyl = {};
     for (const [a,b] of BONES) {
       const m = new THREE.Mesh(new THREE.CylinderGeometry(.020,.020,1,8,1), boneMat);
@@ -358,7 +348,7 @@ class FitAIChar {
       this._cyl[a+'_'+b] = m;
     }
 
-    // State
+    // estado interno da animação
     this._pA       = STAND;
     this._pB       = SWAY;
     this._t        = 0;
@@ -366,7 +356,7 @@ class FitAIChar {
     this._spd      = .015;
     this._rotY     = 0;
     this._on       = false;
-    this._mode     = 'pose';   // 'pose' | 'recorded'
+    this._mode     = 'pose';   // 'pose' = animação pré-pronta | 'recorded' = gravação real
     this._recPoses = null;
     this._recIdx   = 0;
     this._recDir   = 1;
@@ -380,6 +370,7 @@ class FitAIChar {
     this._renderer.setAnimationLoop(()=>this._tick());
   }
 
+  // ajusta o tamanho do renderer quando o container muda de tamanho
   resize() {
     const wrap = this._canvas?.parentElement;
     if (!wrap) return;
@@ -390,6 +381,7 @@ class FitAIChar {
     this._camera.updateProjectionMatrix();
   }
 
+  // inicia a animação pré-pronta de um exercício pelo nome
   playExercise(name) {
     const cfg = ANIMS[animType(name)] || ANIMS.default;
     this._mode     = 'pose';
@@ -402,28 +394,28 @@ class FitAIChar {
     this._on       = true;
   }
 
-  // Plays back the real landmark positions captured during recording.
-  // animFrames: [{nose,lS,rS,lE,rE,lW,rW,lH,rH,lK,rK,lA,rA}, ...]
-  // motionRange: {nose:0.12, lS:0.05, ...} — range of motion per joint in MP coords
+  // reproduz os frames reais gravados pelo usuário
+  // animFrames: array de snapshots de posição dos pontos do MediaPipe
+  // motionRange: quanto cada articulação se moveu – usado pra filtrar ruído
   playRecorded(animFrames, motionRange) {
     if (!animFrames || animFrames.length === 0) { this.stop(); return; }
 
-    // Compute reference scale from first frame that has hips and shoulders visible
-    let scale = 2.1; // default: char units per MP normalized unit
+    // calcula a escala de conversão entre coordenadas do MediaPipe e do personagem 3D
+    let scale = 2.1;
     let anchorX = 0.5;
     for (const f of animFrames) {
       if (f.lH && f.rH && f.lS && f.rS) {
-        const midHy = (f.lH.y + f.rH.y) / 2;
-        const midSy = (f.lS.y + f.rS.y) / 2;
-        const midHx = (f.lH.x + f.rH.x) / 2;
+        const midHy  = (f.lH.y + f.rH.y) / 2;
+        const midSy  = (f.lS.y + f.rS.y) / 2;
+        const midHx  = (f.lH.x + f.rH.x) / 2;
         const mpDist = Math.abs(midHy - midSy);
         if (mpDist > 0.02) { scale = 0.53 / mpDist; anchorX = midHx; }
         break;
       }
     }
 
-    // Convert one MediaPipe frame into character joint positions.
-    // x is flipped because in raw MP coords, person's left appears at higher x (right of image).
+    // converte um frame do MediaPipe pra coordenadas do personagem 3D
+    // o x é invertido porque no MediaPipe o lado esquerdo da pessoa aparece à direita
     const mpToChar = (f) => {
       const midHx = f.lH && f.rH ? (f.lH.x + f.rH.x) / 2 : anchorX;
       const midHy = f.lH && f.rH ? (f.lH.y + f.rH.y) / 2 : 0.5;
@@ -433,8 +425,8 @@ class FitAIChar {
         ? { x: (midHx - lm.x) * scale, y: 0.93 + (midHy - lm.y) * scale, z: 0 }
         : null;
 
-      const chestY  = 0.93 + Math.abs(midHy - midSy) * scale * 0.55;
-      const neckY   = 0.93 + Math.abs(midHy - midSy) * scale * 0.85;
+      const chestY = 0.93 + Math.abs(midHy - midSy) * scale * 0.55;
+      const neckY  = 0.93 + Math.abs(midHy - midSy) * scale * 0.85;
 
       return {
         pelvis:    { x: 0, y: 0.93, z: 0 },
@@ -458,7 +450,7 @@ class FitAIChar {
 
     const charPoses = animFrames.map(mpToChar);
 
-    // Compute mean pose (used as rest position for joints that didn't move)
+    // calcula a pose média (usada como repouso pras articulações que não se moveram)
     const meanPose = {};
     for (const j of JOINTS) {
       const xs = charPoses.map(p => p[j]?.x).filter(v => v != null);
@@ -468,8 +460,7 @@ class FitAIChar {
         : STAND[j];
     }
 
-    // For each joint: measure variance in character space.
-    // Joints that barely moved keep the mean position — only real motion animates.
+    // descobre quais articulações realmente se moveram (variância acima do limiar)
     const movedJoints = new Set();
     for (const j of JOINTS) {
       const xs = charPoses.map(p => p[j]?.x).filter(v => v != null);
@@ -480,7 +471,7 @@ class FitAIChar {
       if (Math.max(rx, ry) > MOTION_THRESH) movedJoints.add(j);
     }
 
-    // Build filtered animation poses: real position for moved joints, mean for still ones
+    // monta as poses filtradas: posição real pras que se moveram, média pras paradas
     this._recPoses = charPoses.map(charPose => {
       const pose = {};
       for (const j of JOINTS) {
@@ -498,7 +489,7 @@ class FitAIChar {
 
   stop() { this._on = false; this._mode = 'pose'; }
 
-  // Eased lerp between two poses
+  // interpolação com easing (cosseno) entre duas poses
   _lerp(a, b, t) {
     const e = .5 - .5 * Math.cos(t * Math.PI);
     const out = {};
@@ -509,7 +500,7 @@ class FitAIChar {
     return out;
   }
 
-  // Linear lerp between two recorded poses (no easing needed — frames are already smooth)
+  // interpolação linear entre frames gravados (sem easing, já são suaves)
   _lerpPoses(a, b, t) {
     const out = {};
     for (const k of JOINTS) {
@@ -519,7 +510,7 @@ class FitAIChar {
     return out;
   }
 
-  // Orient a unit-Y cylinder to span from p1 to p2
+  // posiciona e rotaciona um cilindro entre dois pontos no espaço 3D
   _placeCyl(key, p1, p2) {
     const m = this._cyl[key];
     if (!m) return;
@@ -531,14 +522,16 @@ class FitAIChar {
     m.position.set((p1.x+p2.x)*.5,(p1.y+p2.y)*.5,(p1.z+p2.z)*.5);
     this._v2.set(dx/len, dy/len, dz/len);
     if (this._up.dot(this._v2)<-.9999) {
-      m.quaternion.set(1,0,0,0); // antiparallel edge case
+      m.quaternion.set(1,0,0,0); // caso especial: antiparalelo
     } else {
       m.quaternion.setFromUnitVectors(this._up, this._v2);
     }
   }
 
+  // === LOOP DE ANIMAÇÃO ===
+  // chamado pelo renderer a cada frame – atualiza câmera, pose e renderiza
   _tick() {
-    // Smooth camera Y target transition
+    // câmera acompanha suavemente o alvo Y
     this._camLookY += (this._camTargY - this._camLookY) * .04;
     this._camera.position.y += (this._camLookY - this._camera.position.y) * .03;
     this._camera.lookAt(0, this._camLookY*.75, 0);
@@ -551,28 +544,28 @@ class FitAIChar {
     let pose;
 
     if (this._mode === 'recorded' && this._recPoses && this._recPoses.length > 0) {
-      // Advance through recorded frames (ping-pong)
+      // avança pelos frames gravados em ping-pong (vai e volta)
       this._recIdx += this._recDir * 0.08;
       if (this._recIdx >= this._recPoses.length - 1) { this._recIdx = this._recPoses.length - 1; this._recDir = -1; }
       if (this._recIdx <= 0) { this._recIdx = 0; this._recDir = 1; }
 
-      // Interpolate between adjacent recorded frames for smooth playback
+      // interpola entre frames adjacentes pra suavizar
       const i0 = Math.floor(this._recIdx);
       const i1 = Math.min(i0 + 1, this._recPoses.length - 1);
       pose = this._lerpPoses(this._recPoses[i0], this._recPoses[i1], this._recIdx - i0);
     } else {
-      // Ping-pong pose interpolation (built-in exercises)
+      // animação pré-pronta: oscila entre pose A e pose B
       this._t += this._dir * this._spd;
       if (this._t >= 1){this._t=1; this._dir=-1;}
       if (this._t <= 0){this._t=0; this._dir= 1;}
       pose = this._lerp(this._pA, this._pB, this._t);
     }
 
-    // Slow Y-axis rotation for 3D effect
+    // rotação lenta no eixo Y pra dar o efeito 3D
     this._rotY += .007;
     const cy = Math.cos(this._rotY), sy = Math.sin(this._rotY);
 
-    // Apply Y rotation (around world Y)
+    // aplica a rotação Y em cada articulação
     const rot = {};
     for (const k of JOINTS) {
       const q = pose[k];

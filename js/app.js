@@ -1,24 +1,22 @@
-/**
- * app.js – Main application controller for FitAI
- * Loaded as a regular script (no ES modules).
- * Depends on config.js, pose.js, classifier.js, report.js being loaded first.
- */
+// app.js
+// arquivo principal do FitAI – controla todas as telas e a lógica do treino
+// OBS: precisa que config.js, pose.js, classifier.js e report.js já tenham carregado antes
+// não uso import/export porque o projeto roda direto no navegador sem bundler
 
-// Read external dependencies with underscore-prefixed names to avoid
-// SyntaxError: multiple <script> tags share the global lexical scope, so
-// re-declaring names already bound by config.js / pose.js / classifier.js
-// (as functions or classes) throws "Identifier has already been declared".
+// === DEPENDÊNCIAS EXTERNAS ===
+// pego as funções do config.js pelo objeto global window.FitAIConfig
+// uso nomes com _ pra não conflitar com variáveis de outros arquivos já carregados
 const _cfg                  = window.FitAIConfig          || {};
 const _saveWorkout          = _cfg.saveWorkout             || function() {};
 const _getWorkouts          = _cfg.getWorkouts             || function() { return []; };
 const _saveCustomExercise   = _cfg.saveCustomExercise      || function() {};
 const _getCustomExercises   = _cfg.getCustomExercises      || function() { return []; };
 const _deleteCustomExercise = _cfg.deleteCustomExercise    || function() {};
-const _generateReport     = window.generateReport      || function() { return {}; };
+const _generateReport       = window.generateReport        || function() { return {}; };
 
-// ════════════════════════════════════════════════════════════════════════════
-// APPLICATION STATE
-// ════════════════════════════════════════════════════════════════════════════
+// === ESTADO GLOBAL DO APP ===
+// esse objeto guarda tudo que o app precisa saber pra funcionar
+// cuidado: se mudar a estrutura aqui tem q atualizar em todos os lugares que usam
 const state = {
   screen: 'home',
 
@@ -40,19 +38,19 @@ const state = {
     captureTimer:  null
   },
 
-  // Guided workout plan state
+  // estado do plano de treino guiado
   profile:    null,   // { age, sex, height, weight }
   plan:       [],     // [{ name, category, sets, repsPerSet, restSeconds, level }]
-  planIndex:  -1,     // current exercise index in plan
-  setIndex:   0,      // current set (0-indexed)
-  setReps:    0,      // reps done in current set
-  restTimer:  null,   // rest countdown interval
+  planIndex:  -1,     // qual exercício do plano estamos agora
+  setIndex:   0,      // qual série atual (0-indexed)
+  setReps:    0,      // reps feitas na série atual
+  restTimer:  null,   // intervalo do countdown de descanso
 
   poseDetector: null,
   classifier:   null,
   customExercises: [],
-  char3d:       null,
-  charLib:      null,
+  char3d:       null,  // personagem 3D na tela de demo
+  charLib:      null,  // personagem 3D na biblioteca de exercícios
 
   exlibFilter:   'all',
   exlibSearch:   '',
@@ -62,9 +60,9 @@ const state = {
   toastTimeout:  null
 };
 
-// ════════════════════════════════════════════════════════════════════════════
-// EXERCISE INFO – descriptions, tips, icons for demo screen
-// ════════════════════════════════════════════════════════════════════════════
+// === INFORMAÇÕES DOS EXERCÍCIOS ===
+// descrições, músculos e dicas de cada exercício – preenchi manualmente tudo isso
+// usado na tela de demo pra explicar o exercício antes de começar
 const EXERCISE_INFO = {
   'Agachamento':            { icon:'🏋️', muscles:'Quadríceps, Glúteos, Isquiotibiais',   desc:'Pés na largura dos ombros levemente abertos. Desça como se fosse sentar em uma cadeira, mantendo o tronco ereto e os joelhos alinhados com os pés.',                                    tips:['Joelhos alinhados com os pés','Desça até 90°','Peso nos calcanhares'] },
   'Polichinelo':            { icon:'⭐', muscles:'Cardio, Corpo Todo',                    desc:'Em pé com pés juntos. Salte abrindo os pés além dos ombros enquanto eleva os braços acima da cabeça. Retorne e repita.',                                                                tips:['Sincronize braços e pernas','Aterrisse suavemente','Ritmo constante'] },
@@ -119,14 +117,14 @@ const EXERCISE_INFO = {
   'Tesoura':                { icon:'✂️', muscles:'Abdômen Inferior',                      desc:'Deitado de costas, pernas levemente elevadas. Alterne-as verticalmente.',                                                                                                               tips:['Lombar colada ao chão','Pernas retas','Movimentos alternados'] },
 };
 
-// Exercises that require gym equipment (everything else is home/bodyweight)
+// exercícios que precisam de equipamento de academia
 const _GYM_NAMES = new Set([
   'Desenvolvimento','Elevação Lateral','Remada Curvada','Stiff','Boa Manhã',
   'Rosca Direta','Rosca Alternada','Rosca Martelo',
   'Tríceps Testa','Crucifixo','Hip Thrust'
 ]);
 
-// Category labels derived from primary muscle group
+// mapeia o músculo principal pra categoria do exercício
 const _CAT_MAP = {
   'Quadríceps':'Pernas','Glúteos':'Glúteo','Cardio':'Cardio',
   'Peitoral':'Peito','Core':'Core','Oblíquos':'Abdômen',
@@ -137,6 +135,7 @@ const _CAT_MAP = {
   'Glúteo Médio':'Glúteo','Romboides':'Costas'
 };
 
+// lista de todos os exercícios pré-prontos com categoria e local
 const BUILTIN_EXERCISES = Object.keys(EXERCISE_INFO).map(name => {
   const primary  = EXERCISE_INFO[name].muscles.split(',')[0].trim();
   const category = _CAT_MAP[primary] || primary;
@@ -144,11 +143,11 @@ const BUILTIN_EXERCISES = Object.keys(EXERCISE_INFO).map(name => {
   return { name, category, location };
 });
 
-// ════════════════════════════════════════════════════════════════════════════
-// DOM HELPERS
-// ════════════════════════════════════════════════════════════════════════════
+// === FUNÇÕES UTILITÁRIAS DE DOM ===
+// atalho pra document.getElementById – uso muito, então abreviei
 const $ = (id) => document.getElementById(id);
 
+// esconde todas as telas e mostra a que foi pedida
 function showScreen(name) {
   document.querySelectorAll('.screen').forEach(el => {
     el.classList.remove('active');
@@ -160,6 +159,7 @@ function showScreen(name) {
   }
 }
 
+// mostra uma notificação temporária no canto da tela
 function showToast(message, type = 'info', duration = 3000) {
   const toast = $('toast');
   if (!toast) return;
@@ -171,9 +171,8 @@ function showToast(message, type = 'info', duration = 3000) {
   }, duration);
 }
 
-// ════════════════════════════════════════════════════════════════════════════
-// LOCAL STORAGE STATS
-// ════════════════════════════════════════════════════════════════════════════
+// === ESTATÍSTICAS LOCAIS ===
+// salvo no localStorage pra não perder os dados quando fechar o app
 function getLocalStats() {
   try {
     return JSON.parse(localStorage.getItem('fitai_stats') || 'null') || {
@@ -188,6 +187,7 @@ function saveLocalStats(stats) {
   try { localStorage.setItem('fitai_stats', JSON.stringify(stats)); } catch { /* quota */ }
 }
 
+// atualiza os números na tela home com os dados salvos
 function updateHomeStats() {
   const stats = getLocalStats();
   const level = calcDisplayLevel(stats.totalReps, stats.totalWorkouts);
@@ -197,15 +197,15 @@ function updateHomeStats() {
   $('stat-level').textContent          = level;
 }
 
+// calcula o nível de exibição na home baseado em reps e treinos feitos
 function calcDisplayLevel(totalReps, totalWorkouts) {
   if (totalReps < 50 || totalWorkouts < 3) return 'Iniciante';
   if (totalReps <= 150) return 'Intermediário';
   return 'Avançado';
 }
 
-// ════════════════════════════════════════════════════════════════════════════
-// PROFILE SCREEN
-// ════════════════════════════════════════════════════════════════════════════
+// === TELA DE PERFIL ===
+// coleta dados do usuário (idade, sexo, altura, peso, local) pra gerar o plano de treino
 function showProfileScreen() {
   showScreen('profile');
   state.profile = { sex: '', location: '' };
@@ -232,6 +232,7 @@ function onSexSelect(sex) {
   updateProfileUI();
 }
 
+// atualiza o preview do IMC e habilita/desabilita o botão de gerar plano
 function updateProfileUI() {
   const age    = parseInt($('profile-age').value)      || 0;
   const height = parseInt($('profile-height').value)   || 0;
@@ -246,9 +247,9 @@ function updateProfileUI() {
     else if (bmi < 25)   label = 'Peso normal';
     else if (bmi < 30)   label = 'Sobrepeso';
     else                 label = 'Obesidade';
-    $('bmi-value').textContent         = bmi.toFixed(1);
-    $('fitness-level-preview').textContent = label;
-    $('bmi-preview').style.display     = 'flex';
+    $('bmi-value').textContent              = bmi.toFixed(1);
+    $('fitness-level-preview').textContent  = label;
+    $('bmi-preview').style.display          = 'flex';
   } else {
     $('bmi-preview').style.display = 'none';
   }
@@ -258,6 +259,7 @@ function updateProfileUI() {
   $('btn-generate-plan').disabled = !valid;
 }
 
+// valida os dados e gera o plano de treino
 async function submitProfile() {
   const age      = parseInt($('profile-age').value);
   const height   = parseInt($('profile-height').value);
@@ -286,9 +288,9 @@ async function submitProfile() {
   showExerciseSelection();
 }
 
-// ════════════════════════════════════════════════════════════════════════════
-// WORKOUT PLAN GENERATOR
-// ════════════════════════════════════════════════════════════════════════════
+// === GERADOR DE PLANO DE TREINO ===
+// usa o perfil do usuário pra escolher exercícios e definir séries/reps/descanso
+// leva em conta idade, IMC, sexo e local (casa ou academia)
 function generateWorkoutPlan(profile, customExercises) {
   const bmi = profile.weight / ((profile.height / 100) ** 2);
 
@@ -301,7 +303,7 @@ function generateWorkoutPlan(profile, customExercises) {
     level = 'Avançado';     sets = 3; repsPerSet = 15; restSeconds = 45;
   }
 
-  // Built-in exercises with categories
+  // exercícios base pra misturar com os personalizados
   const BUILTIN = [
     { name: 'Agachamento', category: 'Pernas',  location: 'home' },
     { name: 'Polichinelo',  category: 'Cardio',  location: 'home' },
@@ -324,9 +326,7 @@ function generateWorkoutPlan(profile, customExercises) {
     return ex;
   }
 
-  // Filter by location preference
-  // home: ONLY bodyweight exercises (location:'home')
-  // gym:  ALL exercises (home + gym with equipment)
+  // casa: só exercícios sem equipamento; academia: todos
   const loc = profile.location || 'home';
   const locationFiltered = loc === 'gym'
     ? pool
@@ -340,30 +340,25 @@ function generateWorkoutPlan(profile, customExercises) {
 
   const selected = [];
 
-  // Warm-up cardio
+  // estrutura do treino: cardio → pernas → core → superior → glúteo (mulher) → cardio final
   const warmup = pick(cardio);
   if (warmup) selected.push(warmup);
 
-  // Legs (more for women)
   const legCount = profile.sex === 'F' ? 2 : 1;
   for (let i = 0; i < legCount; i++) { const e = pick(legs); if (e) selected.push(e); }
 
-  // Core
   const c = pick(core);
   if (c) selected.push(c);
 
-  // Upper body (more for men)
   const upperCount = profile.sex === 'M' ? 2 : 1;
   for (let i = 0; i < upperCount; i++) { const e = pick(upper); if (e) selected.push(e); }
 
-  // Glute focus for women
   if (profile.sex === 'F') { const g = pick(glutes) || pick(legs); if (g) selected.push(g); }
 
-  // Finish cardio
   const finish = pick(cardio);
   if (finish) selected.push(finish);
 
-  // Guarantee at least 4 exercises
+  // garante pelo menos 4 exercícios no plano
   while (selected.length < 4) {
     const e = pick(locationFiltered);
     if (!e) break;
@@ -373,9 +368,8 @@ function generateWorkoutPlan(profile, customExercises) {
   return selected.map(ex => ({ name: ex.name, category: ex.category, sets, repsPerSet, restSeconds, level }));
 }
 
-// ════════════════════════════════════════════════════════════════════════════
-// EXERCISE SELECTION SCREEN
-// ════════════════════════════════════════════════════════════════════════════
+// === TELA DE SELEÇÃO DE EXERCÍCIOS ===
+// mostra o plano gerado e permite ao usuário trocar ou desmarcar exercícios
 function showExerciseSelection() {
   const item0    = state.plan[0];
   const locLabel = state.profile.location === 'home' ? '🏠 Casa' : '🏋️ Academia';
@@ -411,7 +405,7 @@ function renderSelectionList() {
       <button class="btn-swap" data-idx="${idx}">↺ Trocar</button>
     `;
 
-    // Toggle include/exclude
+    // clique no card marca/desmarca o exercício do treino
     card.addEventListener('click', (e) => {
       if (e.target.classList.contains('btn-swap')) return;
       card.classList.toggle('active');
@@ -420,7 +414,7 @@ function renderSelectionList() {
       check.textContent = card.classList.contains('active') ? '✓' : '';
     });
 
-    // Swap exercise
+    // botão trocar: substitui por outro exercício da mesma categoria
     card.querySelector('.btn-swap').addEventListener('click', (e) => {
       e.stopPropagation();
       swapExercise(idx);
@@ -430,13 +424,13 @@ function renderSelectionList() {
   });
 }
 
+// troca um exercício do plano por outro da mesma categoria que ainda não está no plano
 function swapExercise(idx) {
-  const current   = state.plan[idx];
+  const current      = state.plan[idx];
   const currentNames = new Set(state.plan.map(e => e.name));
-  const loc       = state.profile.location || 'home';
-  const allEx     = state.customExercises || [];
+  const loc          = state.profile.location || 'home';
+  const allEx        = state.customExercises || [];
 
-  // Pool of same category and location not already in plan
   const BUILTIN_POOL = [
     { name:'Agachamento', category:'Pernas',  location:'home' },
     { name:'Polichinelo', category:'Cardio',  location:'home' },
@@ -462,8 +456,9 @@ function swapExercise(idx) {
   renderSelectionList();
 }
 
+// inicia o treino com os exercícios que estão marcados (ativos)
 function startPlanFromSelection() {
-  const cards = document.querySelectorAll('#select-list .sel-card');
+  const cards  = document.querySelectorAll('#select-list .sel-card');
   const active = [];
   cards.forEach((card, i) => {
     if (card.classList.contains('active')) active.push(state.plan[i]);
@@ -481,6 +476,7 @@ function startPlanFromSelection() {
   advanceToNextExercise();
 }
 
+// gera um plano completamente novo mantendo o mesmo perfil
 function regenPlan() {
   const customExercises = state.customExercises || [];
   state.plan = generateWorkoutPlan(state.profile, customExercises);
@@ -491,9 +487,8 @@ function regenPlan() {
     `${locLabel} · ${state.plan[0]?.level || ''} · ${state.plan.length} exercícios`;
 }
 
-// ════════════════════════════════════════════════════════════════════════════
-// DEMO SCREEN
-// ════════════════════════════════════════════════════════════════════════════
+// === TELA DE DEMONSTRAÇÃO ===
+// mostra o exercício que vai ser feito: descrição, músculos, dicas e o personagem 3D animado
 function showExerciseDemo() {
   const item = state.plan[state.planIndex];
   const info = EXERCISE_INFO[item.name] || {
@@ -503,14 +498,14 @@ function showExerciseDemo() {
     tips: ['Foco na postura', 'Movimento controlado', 'Respire regularmente']
   };
 
-  $('demo-ex-num').textContent    = state.planIndex + 1;
-  $('demo-ex-total').textContent  = state.plan.length;
-  $('demo-name').textContent      = item.name;
-  $('demo-muscles').textContent   = info.muscles;
+  $('demo-ex-num').textContent      = state.planIndex + 1;
+  $('demo-ex-total').textContent    = state.plan.length;
+  $('demo-name').textContent        = item.name;
+  $('demo-muscles').textContent     = info.muscles;
   $('demo-description').textContent = info.desc;
-  $('demo-sets').textContent      = item.sets;
-  $('demo-reps').textContent      = item.repsPerSet;
-  $('demo-level').textContent     = item.level;
+  $('demo-sets').textContent        = item.sets;
+  $('demo-reps').textContent        = item.repsPerSet;
+  $('demo-level').textContent       = item.level;
 
   const tipsList = $('demo-tips');
   tipsList.innerHTML = '';
@@ -520,12 +515,13 @@ function showExerciseDemo() {
     tipsList.appendChild(li);
   });
 
-  $('demo-countdown').style.display    = 'none';
-  $('btn-demo-start').style.display    = 'inline-flex';
-  $('btn-demo-skip').style.display     = state.planIndex < state.plan.length - 1 ? 'inline-flex' : 'none';
+  $('demo-countdown').style.display = 'none';
+  $('btn-demo-start').style.display = 'inline-flex';
+  $('btn-demo-skip').style.display  = state.planIndex < state.plan.length - 1 ? 'inline-flex' : 'none';
 
   showScreen('demo');
 
+  // toca a animação do personagem 3D – usa frames gravados pra exercícios personalizados
   if (state.char3d) {
     state.char3d.resize();
     const customEx = (state.customExercises || []).find(e => e.name === item.name);
@@ -539,11 +535,11 @@ function showExerciseDemo() {
   }
 }
 
+// countdown de 3 segundos antes de começar o exercício
 async function startGuidedExercise() {
   $('btn-demo-start').style.display = 'none';
   $('btn-demo-skip').style.display  = 'none';
 
-  // Countdown 3 2 1
   const cd = $('demo-countdown');
   cd.style.display = 'block';
   for (let i = 3; i > 0; i--) {
@@ -562,9 +558,8 @@ async function startGuidedExercise() {
   }
 }
 
-// ════════════════════════════════════════════════════════════════════════════
-// GUIDED WORKOUT ENGINE
-// ════════════════════════════════════════════════════════════════════════════
+// === TREINO GUIADO ===
+// inicializa a câmera, o classificador e começa a detectar o exercício do plano atual
 async function initGuidedWorkout() {
   if (!window.ExerciseClassifier || !window.PoseDetector) {
     showToast('Módulos não carregados. Verifique a internet e recarregue.', 'error', 6000);
@@ -597,6 +592,7 @@ async function initGuidedWorkout() {
   state.workout.startTime = Date.now();
   $('camera-status').textContent = 'Câmera ativa – posicione-se em frente';
 
+  // timer que atualiza o cronômetro a cada segundo
   clearInterval(state.timerInterval);
   state.timerInterval = setInterval(() => {
     if (!state.workout.active) return;
@@ -607,6 +603,7 @@ async function initGuidedWorkout() {
   }, 1000);
 }
 
+// muda o exercício esperado no modo guiado sem reinicializar a câmera
 function switchGuidedExercise() {
   const item = state.plan[state.planIndex];
   state.setReps = 0;
@@ -615,15 +612,16 @@ function switchGuidedExercise() {
   setFeedback([`Execute: ${item.name}`]);
 }
 
+// atualiza o painel lateral com as infos do exercício atual do plano
 function updateGuidedPanel() {
   const item = state.plan[state.planIndex];
   const info = EXERCISE_INFO[item.name] || {};
 
-  $('exercise-name').textContent   = item.name;
-  $('rep-count').textContent       = state.setReps;
-  $('workout-score').textContent   = state.workout.totalScore || 0;
-  $('quality-bar').style.width     = '0%';
-  $('quality-value').textContent   = '—';
+  $('exercise-name').textContent  = item.name;
+  $('rep-count').textContent      = state.setReps;
+  $('workout-score').textContent  = state.workout.totalScore || 0;
+  $('quality-bar').style.width    = '0%';
+  $('quality-value').textContent  = '—';
 
   $('plan-progress').style.display = 'flex';
   $('plan-ex-label').textContent   = `Exercício ${state.planIndex + 1} / ${state.plan.length}`;
@@ -632,6 +630,7 @@ function updateGuidedPanel() {
   $('plan-ex-icon').textContent    = info.icon || '🏋️';
 }
 
+// callback chamado pelo MediaPipe a cada frame durante o treino guiado
 function onGuidedPoseResults(results) {
   if (!state.workout.active || !state.classifier) return;
 
@@ -651,11 +650,11 @@ function onGuidedPoseResults(results) {
   const cl = state.classifier.update(landmarks);
   const { repCompleted, quality, feedback, pointsEarned } = cl;
 
-  // Quality bar (always updating)
+  // barra de qualidade atualiza a cada frame
   if (quality !== undefined && quality !== null) {
     const pct = Math.round(quality * 100);
-    $('quality-bar').style.width             = `${pct}%`;
-    $('quality-value').textContent           = `${pct}%`;
+    $('quality-bar').style.width              = `${pct}%`;
+    $('quality-value').textContent            = `${pct}%`;
     $('quality-bar').style.backgroundPosition = `${100 - pct}% center`;
   }
 
@@ -664,8 +663,9 @@ function onGuidedPoseResults(results) {
   if (repCompleted) onGuidedRep(quality, pointsEarned);
 }
 
+// chamado quando uma repetição é completada no modo guiado
 function onGuidedRep(quality, pointsEarned) {
-  const item = state.plan[state.planIndex];
+  const item   = state.plan[state.planIndex];
   const exName = item.name;
 
   state.setReps++;
@@ -682,10 +682,11 @@ function onGuidedRep(quality, pointsEarned) {
   state.workout.exercises[exName].qualityScores.push(quality);
   state.workout.exercises[exName].score += pointsEarned || 0;
 
+  // animação do contador de reps (efeito bump)
   const repEl = $('rep-count');
   repEl.textContent = state.setReps;
   repEl.classList.remove('bump');
-  void repEl.offsetWidth;
+  void repEl.offsetWidth; // força reflow pra reiniciar a animação CSS
   repEl.classList.add('bump');
   setTimeout(() => repEl.classList.remove('bump'), 300);
 
@@ -694,6 +695,7 @@ function onGuidedRep(quality, pointsEarned) {
   if (state.setReps >= item.repsPerSet) completeSet();
 }
 
+// série concluída: verifica se tem mais séries ou se passou pro próximo exercício
 function completeSet() {
   clearInterval(state.restTimer);
   const item = state.plan[state.planIndex];
@@ -711,6 +713,7 @@ function completeSet() {
   }
 }
 
+// mostra o overlay de descanso com countdown regressivo
 function startRestCountdown(seconds, label) {
   const overlay = $('rest-overlay');
   overlay.style.display    = 'flex';
@@ -739,6 +742,7 @@ function endRest() {
   setFeedback([`Série ${state.setIndex + 1} — pode começar!`]);
 }
 
+// avança pro próximo exercício do plano; se acabar, finaliza o treino
 function advanceToNextExercise() {
   state.planIndex++;
   state.setIndex = 0;
@@ -757,6 +761,7 @@ function skipExercise() {
   advanceToNextExercise();
 }
 
+// finaliza o treino guiado: para a câmera, salva os dados e mostra o relatório
 async function endGuidedWorkout() {
   state.workout.active = false;
   clearInterval(state.timerInterval);
@@ -769,6 +774,7 @@ async function endGuidedWorkout() {
     ? Math.floor((Date.now() - state.workout.startTime) / 1000)
     : 0;
 
+  // converte o Set de issues pra Array (Set não é serializável pra JSON)
   const exercisesForReport = {};
   for (const [name, ex] of Object.entries(state.workout.exercises)) {
     exercisesForReport[name] = { ...ex, issues: Array.from(ex.issues || new Set()) };
@@ -817,9 +823,8 @@ function abandonWorkout() {
   showScreen('home');
 }
 
-// ════════════════════════════════════════════════════════════════════════════
-// POSE INITIALISATION
-// ════════════════════════════════════════════════════════════════════════════
+// === INICIALIZAÇÃO DA CÂMERA ===
+// cria um PoseDetector e inicia a câmera; retorna null se der erro
 async function initPose(videoId, canvasId, onResults) {
   const video  = $(videoId);
   const canvas = $(canvasId);
@@ -838,9 +843,8 @@ async function initPose(videoId, canvasId, onResults) {
   }
 }
 
-// ════════════════════════════════════════════════════════════════════════════
-// WORKOUT
-// ════════════════════════════════════════════════════════════════════════════
+// === TREINO LIVRE (sem plano) ===
+// detecta automaticamente o exercício que o usuário está fazendo
 async function startWorkout() {
   if (!window.ExerciseClassifier) {
     showToast('Erro: módulo de classificação não carregou. Verifique a internet e recarregue.', 'error', 6000);
@@ -855,7 +859,7 @@ async function startWorkout() {
 
   console.log('[FitAI] startWorkout()');
 
-  // Reset workout state
+  // reseta o estado do treino
   state.workout = {
     active:          false,
     startTime:       null,
@@ -865,13 +869,12 @@ async function startWorkout() {
     lastRepCount:    0
   };
 
-  // Create classifier
   state.classifier = new window.ExerciseClassifier();
   state.classifier.setCustomExercises(state.customExercises);
 
   showScreen('workout');
 
-  // Reset UI
+  // reseta a UI
   $('exercise-name').textContent  = '—';
   $('rep-count').textContent      = '0';
   $('workout-score').textContent  = '0';
@@ -881,7 +884,6 @@ async function startWorkout() {
   setFeedback(['Inicializando câmera…']);
   $('camera-status').textContent  = 'Inicializando câmera…';
 
-  // Stop any previous detector
   if (state.poseDetector) {
     state.poseDetector.stop();
     state.poseDetector = null;
@@ -890,12 +892,10 @@ async function startWorkout() {
   state.poseDetector = await initPose('workout-video', 'workout-canvas', onWorkoutPoseResults);
   if (!state.poseDetector) return;
 
-  // All good – mark workout active
   state.workout.active    = true;
   state.workout.startTime = Date.now();
   $('camera-status').textContent = 'Câmera ativa – posicione-se em frente';
 
-  // Start timer
   clearInterval(state.timerInterval);
   state.timerInterval = setInterval(() => {
     if (!state.workout.active) return;
@@ -906,12 +906,12 @@ async function startWorkout() {
   }, 1000);
 }
 
+// callback do MediaPipe pra o treino livre – passa pro classificador e atualiza a UI
 function onWorkoutPoseResults(results) {
   if (!state.workout.active || !state.classifier) return;
 
   const landmarks = results.poseLandmarks;
 
-  // Update landmark info
   const info = $('landmark-info');
   if (info) {
     const visible = landmarks
@@ -929,16 +929,15 @@ function onWorkoutPoseResults(results) {
   updateWorkoutUI(classification);
 }
 
+// atualiza toda a UI do treino com os dados da classificação atual
 function updateWorkoutUI(classification) {
   if (!classification) return;
 
   const { exercise, repCompleted, quality, feedback, pointsEarned } = classification;
 
-  // Exercise name
   const exNameEl = $('exercise-name');
   if (exercise) {
     exNameEl.textContent = exercise.name;
-    // Ensure entry in exercises map
     if (!state.workout.exercises[exercise.name]) {
       state.workout.exercises[exercise.name] = {
         name:          exercise.name,
@@ -955,7 +954,7 @@ function updateWorkoutUI(classification) {
     state.workout.currentExercise = null;
   }
 
-  // Rep completed
+  // quando completa uma rep, guarda os dados e anima o contador
   if (repCompleted && state.workout.currentExercise) {
     const ex = state.workout.exercises[state.workout.currentExercise];
     ex.reps++;
@@ -963,7 +962,6 @@ function updateWorkoutUI(classification) {
     ex.score += pointsEarned || 0;
     state.workout.totalScore += pointsEarned || 0;
 
-    // Collect issues from feedback
     if (feedback) {
       feedback.forEach(f => {
         const positiveWords = ['Ótim', 'Excelente', 'Boa', 'Bom', 'legal', '!'];
@@ -973,39 +971,36 @@ function updateWorkoutUI(classification) {
       });
     }
 
-    // Animate rep counter
     const totalReps = Object.values(state.workout.exercises)
       .reduce((sum, e) => sum + e.reps, 0);
 
     const repEl = $('rep-count');
     repEl.textContent = totalReps;
     repEl.classList.remove('bump');
-    // Force reflow then add class
     void repEl.offsetWidth;
     repEl.classList.add('bump');
     setTimeout(() => repEl.classList.remove('bump'), 300);
 
-    // Score
     $('workout-score').textContent = state.workout.totalScore;
   }
 
-  // Quality bar – only when an exercise is actively detected
+  // barra de qualidade só aparece quando tem exercício detectado
   if (exercise && quality !== undefined && quality !== null) {
     const pct = Math.round(quality * 100);
-    $('quality-bar').style.width             = `${pct}%`;
-    $('quality-value').textContent           = `${pct}%`;
+    $('quality-bar').style.width              = `${pct}%`;
+    $('quality-value').textContent            = `${pct}%`;
     $('quality-bar').style.backgroundPosition = `${100 - pct}% center`;
   } else if (!exercise) {
     $('quality-bar').style.width   = '0%';
     $('quality-value').textContent = '—';
   }
 
-  // Feedback
   if (feedback && feedback.length > 0) {
     setFeedback(feedback);
   }
 }
 
+// exibe as mensagens de feedback coloridas (bom/aviso/erro)
 function setFeedback(messages) {
   const container = $('feedback-text');
   if (!container) return;
@@ -1013,7 +1008,6 @@ function setFeedback(messages) {
   messages.forEach(msg => {
     const p = document.createElement('p');
     p.className = 'feedback-item';
-    // Simple classification of feedback tone
     const positive = ['Ótim', 'Excelente', 'Boa ', 'Bom ', '!', 'concluída'];
     const warning  = ['Desça', 'mais', 'Incline', 'Eleve', 'Feche', 'Abra', 'volte'];
     const error    = ['passando', 'Quadril', 'alinha', 'muito'];
@@ -1025,13 +1019,13 @@ function setFeedback(messages) {
   });
 }
 
+// finaliza o treino livre: para câmera, gera relatório e mostra na tela
 async function endWorkout() {
   if (!state.workout.active) return;
 
   state.workout.active = false;
   clearInterval(state.timerInterval);
 
-  // Stop pose
   if (state.poseDetector) {
     state.poseDetector.stop();
     state.poseDetector = null;
@@ -1039,7 +1033,6 @@ async function endWorkout() {
 
   const duration = Math.floor((Date.now() - state.workout.startTime) / 1000);
 
-  // Normalise exercises for report
   const exercisesForReport = {};
   for (const [name, ex] of Object.entries(state.workout.exercises)) {
     exercisesForReport[name] = {
@@ -1048,22 +1041,20 @@ async function endWorkout() {
     };
   }
 
-  const stats = getLocalStats();
+  const stats     = getLocalStats();
   const totalReps = Object.values(exercisesForReport).reduce((s, e) => s + e.reps, 0);
 
   const workoutData = {
     duration,
-    exercises:         exercisesForReport,
-    totalScore:        state.workout.totalScore,
-    totalWorkouts:     stats.totalWorkouts + 1,
-    totalAllTimeReps:  stats.totalReps,
-    createdAt:         new Date().toISOString()
+    exercises:        exercisesForReport,
+    totalScore:       state.workout.totalScore,
+    totalWorkouts:    stats.totalWorkouts + 1,
+    totalAllTimeReps: stats.totalReps,
+    createdAt:        new Date().toISOString()
   };
 
-  // Generate report
   const report = _generateReport(workoutData);
 
-  // Update local stats
   const newStats = {
     totalWorkouts: stats.totalWorkouts + 1,
     totalReps:     stats.totalReps + totalReps,
@@ -1071,7 +1062,6 @@ async function endWorkout() {
   };
   saveLocalStats(newStats);
 
-  // Save to Firestore / localStorage
   try {
     await _saveWorkout({
       ...workoutData,
@@ -1086,37 +1076,27 @@ async function endWorkout() {
     console.warn('[FitAI] Erro ao salvar treino:', err);
   }
 
-  // Show report
   renderReport(report, duration);
   showScreen('report');
   updateHomeStats();
-
-  // Trigger score animation on next frame
   setTimeout(() => animateScoreCircle(report.totalScore), 100);
 }
 
-// ════════════════════════════════════════════════════════════════════════════
-// REPORT
-// ════════════════════════════════════════════════════════════════════════════
+// === RELATÓRIO ===
+// renderiza o relatório de treino na tela: pontuação, resumo, exercícios, dicas
 function renderReport(report, duration) {
-  // Date
   const now = new Date();
   $('report-date').textContent = now.toLocaleDateString('pt-BR', {
     weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
   });
 
-  // Score
-  $('report-score').textContent = report.totalScore;
-
-  // Summary
+  $('report-score').textContent   = report.totalScore;
   $('report-summary').textContent = report.summary;
 
-  // Stats
   $('report-total-reps').textContent = report.totalReps;
   $('report-duration').textContent   = report.durationFormatted || formatDuration(duration);
   $('report-level').textContent      = report.level;
 
-  // Achievement
   const achCard = $('achievement-card');
   if (report.achievement) {
     $('achievement-icon').textContent  = report.achievement.icon;
@@ -1127,7 +1107,7 @@ function renderReport(report, duration) {
     achCard.style.display = 'none';
   }
 
-  // Exercise breakdown
+  // tabela de exercícios com reps, qualidade e status
   const breakdownEl = $('exercise-breakdown');
   breakdownEl.innerHTML = '';
   if (report.exerciseBreakdown && report.exerciseBreakdown.length > 0) {
@@ -1153,7 +1133,6 @@ function renderReport(report, duration) {
     breakdownEl.innerHTML = '<p style="color:var(--text-muted);font-size:14px;">Nenhum exercício registrado.</p>';
   }
 
-  // Improvements
   const improvEl = $('improvements-list');
   improvEl.innerHTML = '';
   if (report.improvements && report.improvements.length > 0) {
@@ -1167,7 +1146,6 @@ function renderReport(report, duration) {
     $('improvements-section').style.display = 'none';
   }
 
-  // Strengths
   const strengthsEl = $('strengths-list');
   strengthsEl.innerHTML = '';
   if (report.strengths && report.strengths.length > 0) {
@@ -1181,7 +1159,6 @@ function renderReport(report, duration) {
     $('strengths-section').style.display = 'none';
   }
 
-  // Next workout
   $('next-workout-suggestion').textContent = report.nextWorkoutSuggestion;
 }
 
@@ -1192,16 +1169,16 @@ function formatDuration(seconds) {
   return `${m}min ${s.toString().padStart(2, '0')}s`;
 }
 
+// anima o círculo de pontuação no relatório (SVG stroke-dashoffset)
 function animateScoreCircle(score) {
   const circle = $('score-circle-fill');
   if (!circle) return;
 
   const circumference = 327; // 2 * PI * 52
   const maxScore = 500;
-  const pct = Math.min(score / maxScore, 1);
+  const pct    = Math.min(score / maxScore, 1);
   const offset = circumference * (1 - pct);
 
-  // Set color based on score
   let color;
   if (pct >= 0.7) color = '#00ff88';
   else if (pct >= 0.4) color = '#ffd600';
@@ -1211,9 +1188,8 @@ function animateScoreCircle(score) {
   circle.style.strokeDashoffset = offset;
 }
 
-// ════════════════════════════════════════════════════════════════════════════
-// RECORDING
-// ════════════════════════════════════════════════════════════════════════════
+// === GRAVAÇÃO DE EXERCÍCIO PERSONALIZADO ===
+// abre a câmera na tela de gravação e prepara o recorder
 async function openRecordScreen() {
   if (!window.PoseDetector) {
     showToast('Erro: módulo de câmera não carregou. Verifique a internet e recarregue.', 'error', 6000);
@@ -1222,7 +1198,6 @@ async function openRecordScreen() {
   }
   console.log('[FitAI] openRecordScreen()');
 
-  // Stop workout detector if active
   if (state.workout.active) {
     state.workout.active = false;
     clearInterval(state.timerInterval);
@@ -1235,22 +1210,20 @@ async function openRecordScreen() {
   showScreen('record');
   resetRecordUI();
 
-  // Init camera for record screen
   const detector = await initPose('record-video', 'record-canvas', onRecordPoseResults);
   if (detector) {
     state.poseDetector = detector;
     $('record-camera-status').textContent = 'Câmera ativa';
   }
 
-  // Enable start button if name is filled
   checkRecordStartEnabled();
 }
 
 function resetRecordUI() {
-  $('exercise-name-input').value   = '';
+  $('exercise-name-input').value    = '';
   $('btn-start-recording').disabled = true;
   $('btn-save-recording').disabled  = true;
-  $('recording-status').style.display = 'none';
+  $('recording-status').style.display  = 'none';
   $('countdown-display').style.display = 'none';
   $('record-camera-status').textContent = 'Inicializando câmera…';
   state.recording = {
@@ -1268,6 +1241,7 @@ function checkRecordStartEnabled() {
   $('btn-start-recording').disabled = name.length < 2;
 }
 
+// recebe cada frame do MediaPipe durante a gravação e passa pro recorder
 function onRecordPoseResults(results) {
   if (!state.recording.active) return;
   if (!results.poseLandmarks) return;
@@ -1279,6 +1253,7 @@ function onRecordPoseResults(results) {
   }
 }
 
+// countdown animado de 3 segundos antes de começar a gravar
 function startCountdown(name) {
   return new Promise((resolve) => {
     let count = 3;
@@ -1288,7 +1263,6 @@ function startCountdown(name) {
 
     const tick = () => {
       display.textContent = count;
-      // Re-trigger animation
       display.classList.remove('countdown-animate');
       void display.offsetWidth;
       display.classList.add('countdown-animate');
@@ -1305,6 +1279,7 @@ function startCountdown(name) {
   });
 }
 
+// inicia a gravação do exercício personalizado
 async function startRecording() {
   const name = $('exercise-name-input').value.trim();
   if (!name || name.length < 2) {
@@ -1312,23 +1287,21 @@ async function startRecording() {
     return;
   }
 
-  $('btn-start-recording').disabled = true;
+  $('btn-start-recording').disabled  = true;
   $('btn-cancel-recording').disabled = true;
 
   await startCountdown(name);
 
-  // Init recorder
   state.recording.recorder = new window.ExerciseRecorder();
   state.recording.recorder.startRecording(name);
-  state.recording.active      = true;
+  state.recording.active       = true;
   state.recording.exerciseName = name;
 
-  // Show recording status
-  $('recording-status').style.display = 'flex';
+  $('recording-status').style.display    = 'flex';
   $('recording-status-text').textContent = `Gravando "${name}"…`;
-  $('recording-frames').textContent = '0 frames';
+  $('recording-frames').textContent      = '0 frames';
 
-  // Auto-stop after 5 seconds
+  // para automaticamente depois de 5 segundos
   state.recording.captureTimer = setTimeout(() => {
     if (state.recording.active) {
       finishCapture();
@@ -1338,6 +1311,7 @@ async function startRecording() {
   $('btn-cancel-recording').disabled = false;
 }
 
+// finaliza a captura e verifica se tem frames suficientes
 function finishCapture() {
   state.recording.active = false;
   clearTimeout(state.recording.captureTimer);
@@ -1356,6 +1330,7 @@ function finishCapture() {
   showToast(`${frames} frames capturados. Clique em Salvar para confirmar.`, 'success');
 }
 
+// salva o exercício gravado no Firebase e adiciona na lista local
 async function saveRecording() {
   if (!state.recording.recorder) {
     showToast('Nada para salvar. Grave primeiro.', 'error');
@@ -1376,12 +1351,10 @@ async function saveRecording() {
     state.customExercises.push(template);
     showToast(`"${template.name}" salvo com sucesso!`, 'success');
 
-    // Re-init classifier custom exercises if workout is running
     if (state.classifier) {
       state.classifier.setCustomExercises(state.customExercises);
     }
 
-    // Go back to home or workout
     cancelRecording();
   } catch (err) {
     showToast('Erro ao salvar exercício: ' + err.message, 'error');
@@ -1402,9 +1375,8 @@ function cancelRecording() {
   showScreen('home');
 }
 
-// ════════════════════════════════════════════════════════════════════════════
-// HISTORY
-// ════════════════════════════════════════════════════════════════════════════
+// === HISTÓRICO DE TREINOS ===
+// busca os treinos salvos e exibe como lista de cards
 async function loadHistory() {
   showScreen('history');
   $('history-loading').style.display = 'flex';
@@ -1440,7 +1412,6 @@ function renderHistoryList(workouts) {
         })
       : 'Data desconhecida';
 
-    // Exercise names from either exercises object or report
     let exerciseNames = 'Treino registrado';
     if (w.exercises && typeof w.exercises === 'object') {
       const names = Object.keys(w.exercises);
@@ -1449,14 +1420,12 @@ function renderHistoryList(workouts) {
       }
     }
 
-    // Total reps
     let totalReps = w.report?.totalReps || 0;
     if (!totalReps && w.exercises) {
       totalReps = Object.values(w.exercises).reduce((s, e) => s + (e.reps || 0), 0);
     }
 
-    // Duration
-    const dur = w.duration ? formatDuration(w.duration) : '—';
+    const dur   = w.duration ? formatDuration(w.duration) : '—';
     const score = w.totalScore || w.report?.totalScore || 0;
     const level = w.report?.level || '—';
 
@@ -1472,9 +1441,8 @@ function renderHistoryList(workouts) {
   });
 }
 
-// ════════════════════════════════════════════════════════════════════════════
-// EXERCISE LIBRARY
-// ════════════════════════════════════════════════════════════════════════════
+// === BIBLIOTECA DE EXERCÍCIOS ===
+// mostra todos os exercícios (pré-prontos + personalizados) com filtro e busca
 function showExerciseLibrary() {
   showScreen('exercises');
 
@@ -1490,7 +1458,6 @@ function showExerciseLibrary() {
   const searchEl = $('exlib-search');
   if (searchEl) searchEl.value = '';
 
-  // Reset tab active states
   document.querySelectorAll('.exlib-tab').forEach(t => {
     t.classList.toggle('active', t.dataset.filter === 'all');
   });
@@ -1498,11 +1465,12 @@ function showExerciseLibrary() {
   renderExLibList();
 }
 
+// filtra e renderiza a lista de exercícios da biblioteca
 function renderExLibList() {
   const filter = state.exlibFilter || 'all';
   const search = (state.exlibSearch || '').trim().toLowerCase();
 
-  // Merge builtin + custom, deduplicate by name
+  // junta pré-prontos + personalizados sem duplicatas
   const allEx = [...BUILTIN_EXERCISES.map(e => ({ ...e, isCustom: false }))];
   (state.customExercises || []).forEach(ce => {
     if (!allEx.find(e => e.name === ce.name)) {
@@ -1514,7 +1482,6 @@ function renderExLibList() {
   if (filter !== 'all') items = items.filter(e => e.location === filter);
   if (search) items = items.filter(e => e.name.toLowerCase().includes(search) || (e.category || '').toLowerCase().includes(search));
 
-  // Sort alphabetically
   items.sort((a, b) => a.name.localeCompare(b.name, 'pt'));
 
   const list = $('exlib-list');
@@ -1552,27 +1519,24 @@ function renderExLibList() {
     list.appendChild(item);
   });
 
-  // Re-highlight selected item if any
   if (state.exlibSelected) {
     const active = list.querySelector(`[data-name="${CSS.escape(state.exlibSelected)}"]`);
     if (active) active.classList.add('active');
   }
 }
 
+// seleciona um exercício na biblioteca e mostra no personagem 3D
 function selectLibEx(ex) {
   state.exlibSelected = ex.name;
 
-  // Highlight item
   document.querySelectorAll('.exlib-item').forEach(el => {
     el.classList.toggle('active', el.dataset.name === ex.name);
   });
 
-  // Update preview info
   const info = EXERCISE_INFO[ex.name] || {};
   $('exlib-preview-name').textContent = ex.name;
   $('exlib-preview-meta').textContent = info.muscles || ex.category || 'Geral';
 
-  // Play 3D character — use real recorded frames for custom exercises
   if (state.charLib) {
     state.charLib.resize();
     const fullEx = (state.customExercises || []).find(e => e.name === ex.name);
@@ -1586,6 +1550,7 @@ function selectLibEx(ex) {
   }
 }
 
+// apaga um exercício personalizado da biblioteca
 async function deleteLibEx(ex) {
   if (!confirm(`Apagar "${ex.name}"? Esta ação não pode ser desfeita.`)) return;
 
@@ -1615,9 +1580,10 @@ async function deleteLibEx(ex) {
   }
 }
 
-// ════════════════════════════════════════════════════════════════════════════
-// INIT  (synchronous – no await, so errors never silently swallow listeners)
-// ════════════════════════════════════════════════════════════════════════════
+// === INICIALIZAÇÃO DO APP ===
+// registra todos os event listeners do HTML – chamada uma vez quando o DOM carrega
+// OBS: os IDs aqui têm q bater com os IDs no index.html
+
 function _on(id, event, handler) {
   const el = $(id);
   if (el) {
@@ -1634,13 +1600,13 @@ function init() {
 
   showScreen('home');
 
-  // Home
+  // botões da home
   _on('btn-start-workout',   'click', showProfileScreen);
   _on('btn-record-new-home', 'click', openRecordScreen);
   _on('btn-history',         'click', loadHistory);
   _on('btn-exercises',       'click', showExerciseLibrary);
 
-  // Profile screen
+  // tela de perfil
   _on('btn-generate-plan', 'click', submitProfile);
   _on('btn-back-profile',  'click', () => showScreen('home'));
   _on('loc-btn-home', 'click', () => onLocSelect('home'));
@@ -1651,36 +1617,36 @@ function init() {
   _on('profile-height', 'input', updateProfileUI);
   _on('profile-weight', 'input', updateProfileUI);
 
-  // Exercise selection screen
+  // seleção de exercícios
   _on('btn-start-plan', 'click', startPlanFromSelection);
   _on('btn-regen-plan', 'click', regenPlan);
 
-  // Demo screen
+  // tela de demo
   _on('btn-demo-start', 'click', startGuidedExercise);
   _on('btn-demo-skip',  'click', skipExercise);
 
-  // Workout (guided)
-  _on('btn-abandon-workout', 'click', abandonWorkout);
-  _on('btn-skip-set',        'click', completeSet);
-  _on('btn-skip-rest',       'click', () => { clearInterval(state.restTimer); endRest(); });
+  // treino guiado
+  _on('btn-abandon-workout',    'click', abandonWorkout);
+  _on('btn-skip-set',           'click', completeSet);
+  _on('btn-skip-rest',          'click', () => { clearInterval(state.restTimer); endRest(); });
   _on('btn-record-new-workout', 'click', openRecordScreen);
 
-  // Record
+  // gravação
   _on('exercise-name-input',   'input',   checkRecordStartEnabled);
   _on('exercise-name-input',   'keydown', (e) => { if (e.key === 'Enter') startRecording(); });
   _on('btn-start-recording',   'click',   startRecording);
   _on('btn-save-recording',    'click',   saveRecording);
   _on('btn-cancel-recording',  'click',   cancelRecording);
 
-  // Report
-  _on('btn-new-workout',   'click', startWorkout);
-  _on('btn-view-history',  'click', loadHistory);
+  // relatório
+  _on('btn-new-workout',  'click', startWorkout);
+  _on('btn-view-history', 'click', loadHistory);
 
-  // History
-  _on('btn-back-history',   'click', () => showScreen('home'));
-  _on('btn-first-workout',  'click', startWorkout);
+  // histórico
+  _on('btn-back-history',  'click', () => showScreen('home'));
+  _on('btn-first-workout', 'click', startWorkout);
 
-  // Exercise library
+  // biblioteca de exercícios
   _on('btn-back-exercises', 'click', () => {
     if (state.charLib) state.charLib.stop();
     showScreen('home');
@@ -1700,15 +1666,16 @@ function init() {
 
   console.info('[FitAI] Todos os listeners registrados com sucesso.');
 
-  // 3-D character preview
+  // inicializa o personagem 3D se o Three.js carregou
   if (window.FitAIChar) {
     state.char3d = new window.FitAIChar('char-canvas');
   }
 
-  // Load custom exercises in background – never blocks UI
+  // carrega exercícios personalizados em background sem travar a UI
   _loadCustomExercises();
 }
 
+// carrega os exercícios personalizados do Firebase e atualiza o estado
 async function _loadCustomExercises() {
   try {
     if (typeof _getCustomExercises !== 'function') return;
@@ -1723,7 +1690,7 @@ async function _loadCustomExercises() {
   }
 }
 
-// Global error handler – show a visible toast for any unhandled error
+// captura erros não tratados e mostra um toast pra o usuário
 window.addEventListener('error', (e) => {
   console.error('[FitAI] Erro global:', e.message, e.filename, e.lineno);
   showToast('Erro: ' + e.message, 'error', 6000);
@@ -1733,7 +1700,7 @@ window.addEventListener('unhandledrejection', (e) => {
   console.error('[FitAI] Promise rejeitada:', e.reason);
 });
 
-// Start app when DOM is ready
+// inicia o app quando o DOM estiver pronto
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', init);
 } else {
