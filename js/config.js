@@ -1,7 +1,6 @@
-/**
- * config.js – Firebase configuration and Firestore helpers.
- * Uses Firebase Compat SDK (loaded as a regular <script> tag).
- */
+// config.js
+// conecta o app com o Firebase e cuida de salvar/buscar os dados
+// OBS: esse arquivo precisa ser carregado ANTES de app.js no HTML
 
 const firebaseConfig = {
   apiKey:            "AIzaSyDee2kBiZejJfkH6j5o73zgP3VtTclZXD8",
@@ -12,19 +11,24 @@ const firebaseConfig = {
   appId:             "1:557880487167:web:1209cb3d662186e85ff0ca"
 };
 
+// se a chave for YOUR_API_KEY significa que não configurou ainda
 const IS_PLACEHOLDER = firebaseConfig.apiKey === 'YOUR_API_KEY';
 
+// variáveis do Firebase – começo como null e inicializo abaixo
 let _db        = null;
 let _auth      = null;
-let _authReady = null; // Promise that resolves when anonymous sign-in is done
+let _authReady = null; // Promise que resolve quando o login anônimo terminar
 
+// === INICIALIZAÇÃO DO FIREBASE ===
+// só conecta se tiver chave real, senão usa localStorage como fallback
 if (!IS_PLACEHOLDER) {
   try {
     firebase.initializeApp(firebaseConfig);
     _db   = firebase.firestore();
     _auth = firebase.auth();
 
-    // Sign in anonymously so security rules (request.auth != null) pass
+    // faço login anônimo pra passar nas regras de segurança do Firestore
+    // as rules exigem request.auth != null, então preciso disso
     _authReady = _auth.signInAnonymously()
       .then(() => console.info('[FitAI] Auth anônimo OK, uid:', _auth.currentUser.uid))
       .catch(err => console.warn('[FitAI] Auth anônimo falhou:', err.message));
@@ -37,7 +41,8 @@ if (!IS_PLACEHOLDER) {
   console.warn('[FitAI] Firebase não configurado – usando localStorage.');
 }
 
-// ── localStorage fallback helpers ─────────────────────────────────────────────
+// === FUNÇÕES AUXILIARES DO LOCALSTORAGE ===
+// uso quando o Firebase não tá disponível (offline ou sem configuração)
 function _lsGet(key) {
   try { return JSON.parse(localStorage.getItem(key) || 'null'); } catch { return null; }
 }
@@ -45,14 +50,16 @@ function _lsSet(key, value) {
   try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* quota */ }
 }
 
-// ── Aguarda auth estar pronta e retorna o uid atual ───────────────────────────
+// espera o login terminar e retorna o uid do usuário
 async function _uid() {
   if (!_auth) return null;
   if (_authReady) await _authReady;
   return _auth.currentUser ? _auth.currentUser.uid : null;
 }
 
-// ── saveWorkout ───────────────────────────────────────────────────────────────
+// === TREINOS ===
+// salva um treino no Firestore; se der erro, cai no localStorage
+
 async function saveWorkout(workoutData) {
   const userId  = await _uid();
   const payload = {
@@ -74,6 +81,7 @@ async function saveWorkout(workoutData) {
     }
   }
 
+  // fallback local – limito a 100 treinos pra não encher o storage
   const list = _lsGet('fitai_workouts') || [];
   const id   = 'local_' + Date.now();
   list.unshift({ id, ...payload });
@@ -81,7 +89,6 @@ async function saveWorkout(workoutData) {
   return id;
 }
 
-// ── getWorkouts ───────────────────────────────────────────────────────────────
 async function getWorkouts() {
   const userId = await _uid();
 
@@ -100,7 +107,9 @@ async function getWorkouts() {
   return _lsGet('fitai_workouts') || [];
 }
 
-// ── saveCustomExercise ────────────────────────────────────────────────────────
+// === EXERCÍCIOS PERSONALIZADOS ===
+// exercícios que o usuário grava com a câmera – ficam no Firestore pra sincronizar entre dispositivos
+
 async function saveCustomExercise(exercise) {
   const userId  = await _uid();
   const payload = {
@@ -129,12 +138,12 @@ async function saveCustomExercise(exercise) {
   return id;
 }
 
-// ── getCustomExercises ────────────────────────────────────────────────────────
 async function getCustomExercises() {
   const userId = await _uid();
 
   if (_db && userId) {
     try {
+      // busco todos – são compartilhados, qualquer usuário autenticado pode ver
       const snap = await _db.collection('exercises')
         .orderBy('serverTimestamp', 'desc')
         .get();
@@ -146,7 +155,6 @@ async function getCustomExercises() {
   return _lsGet('fitai_exercises') || [];
 }
 
-// ── deleteCustomExercise ──────────────────────────────────────────────────────
 async function deleteCustomExercise(id) {
   const userId = await _uid();
 
@@ -162,7 +170,9 @@ async function deleteCustomExercise(id) {
   _lsSet('fitai_exercises', list);
 }
 
-// ── Expose globally ───────────────────────────────────────────────────────────
+// === EXPORTAÇÃO GLOBAL ===
+// coloco tudo em window.FitAIConfig pra app.js conseguir acessar
+// não posso usar import/export porque o projeto roda no file:// sem bundler
 window.FitAIConfig = {
   IS_PLACEHOLDER,
   saveWorkout,

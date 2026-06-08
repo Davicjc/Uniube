@@ -2,19 +2,15 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Exercícios – biblioteca compartilhada (leitura para todos auth, incluindo anônimo)
+    // Exercícios – biblioteca compartilhada (qualquer usuário autenticado pode ler, criar e apagar)
     match /exercises/{exerciseId} {
-      allow read: if request.auth != null;
+      allow read, delete: if request.auth != null;
 
       allow create: if request.auth != null
                     && request.resource.data.name is string
-                    && request.resource.data.name.size() > 0
-                    && request.resource.data.name.size() <= 100
-                    && request.resource.data.keys().hasAll(['name', 'angleTemplate', 'createdAt']);
+                    && request.resource.data.name.size() > 0;
 
-      allow update: if request.auth != null
-                   && resource.data.createdBy == request.auth.uid;
-      allow delete: if request.auth != null;
+      allow update: if request.auth != null;
     }
 
     // Treinos – privados por usuário anônimo (uid persistido no dispositivo)

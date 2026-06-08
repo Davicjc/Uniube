@@ -1,16 +1,16 @@
-/**
- * report.js – Workout report generation in Portuguese.
- * Loaded as a regular script (no ES modules).
- */
+// report.js
+// gera o relatório de desempenho ao final de cada treino
+// calcula nível, conquistas, pontos fortes e dicas de melhoria
 
-// ── Level thresholds (cumulative all-time reps) ──────────────────────────────
+// === NÍVEL DO USUÁRIO ===
+// calculado com base em todas as reps acumuladas e número de treinos
 function calcLevel(totalAllTimeReps, totalWorkouts) {
   if (totalAllTimeReps < 50 || totalWorkouts < 3) return 'Iniciante';
   if (totalAllTimeReps <= 150) return 'Intermediário';
   return 'Avançado';
 }
 
-// ── Format duration ──────────────────────────────────────────────────────────
+// formata segundos em "Xmin XXs" ou só "XXs" se for menos de 1 minuto
 function formatDuration(seconds) {
   const m = Math.floor(seconds / 60);
   const s = seconds % 60;
@@ -18,7 +18,8 @@ function formatDuration(seconds) {
   return `${m}min ${s.toString().padStart(2, '0')}s`;
 }
 
-// ── Achievements ─────────────────────────────────────────────────────────────
+// === CONQUISTAS ===
+// lista de conquistas possíveis – a primeira que bater a condição é mostrada
 const ACHIEVEMENTS = [
   {
     id:          'first_workout',
@@ -64,7 +65,9 @@ const ACHIEVEMENTS = [
   }
 ];
 
-// ── Exercise-specific improvement tips ───────────────────────────────────────
+// === DICAS DE MELHORIA ===
+// mapeio os problemas detectados durante o treino para dicas úteis
+// a chave 'default' é usada quando não tem problema específico mas a qualidade foi baixa
 const TIPS = {
   'Agachamento': {
     'Desça mais': 'No agachamento, tente descer até que as coxas fiquem paralelas ao chão (ângulo de 90°). Pratique com o peso do corpo antes de adicionar carga.',
@@ -90,7 +93,7 @@ const TIPS = {
   }
 };
 
-// ── Strength messages (positive) ─────────────────────────────────────────────
+// monta a lista de pontos fortes baseado na qualidade média de cada exercício
 function buildStrengths(exerciseBreakdown) {
   const strengths = [];
   for (const ex of exerciseBreakdown) {
@@ -106,7 +109,7 @@ function buildStrengths(exerciseBreakdown) {
   return strengths;
 }
 
-// ── Summary paragraph ────────────────────────────────────────────────────────
+// monta o parágrafo de resumo do treino
 function buildSummary(data, exerciseBreakdown, level, avgQuality) {
   const { totalReps, duration, exerciseCount } = data;
   const durationStr = formatDuration(duration);
@@ -141,9 +144,9 @@ function buildSummary(data, exerciseBreakdown, level, avgQuality) {
   return opening + body + closing;
 }
 
-// ── Next workout suggestion ───────────────────────────────────────────────────
+// sugestão pro próximo treino baseada nos pontos fracos e no nível
 function buildNextSuggestion(exerciseBreakdown, level, totalReps) {
-  const weakExercises = exerciseBreakdown.filter(e => e.avgQuality < 70);
+  const weakExercises   = exerciseBreakdown.filter(e => e.avgQuality < 70);
   const strongExercises = exerciseBreakdown.filter(e => e.avgQuality >= 80);
 
   if (weakExercises.length > 0) {
@@ -160,22 +163,9 @@ function buildNextSuggestion(exerciseBreakdown, level, totalReps) {
   }
 }
 
-// ════════════════════════════════════════════════════════════════════════════
-// MAIN EXPORT
-// ════════════════════════════════════════════════════════════════════════════
-
-/**
- * generateReport
- *
- * @param {Object} workoutData
- * @param {number} workoutData.duration        – seconds
- * @param {Object} workoutData.exercises       – { [name]: { name, type, reps, qualityScores, issues } }
- * @param {number} workoutData.totalScore      – accumulated points
- * @param {number} [workoutData.totalWorkouts] – all-time workout count (for level/achievements)
- * @param {number} [workoutData.totalAllTimeReps] – cumulative reps across all workouts
- *
- * @returns {Object} report
- */
+// === FUNÇÃO PRINCIPAL ===
+// recebe os dados do treino e retorna um objeto completo com o relatório
+// chamada em app.js quando o treino termina
 function generateReport(workoutData) {
   const {
     duration      = 0,
@@ -185,12 +175,12 @@ function generateReport(workoutData) {
     totalAllTimeReps = 0
   } = workoutData;
 
-  // ── Build exercise list ──
-  const exerciseList = Object.values(exercises);
-  const totalReps    = exerciseList.reduce((sum, e) => sum + (e.reps || 0), 0);
+  // monta a lista de exercícios e calcula o total de reps
+  const exerciseList  = Object.values(exercises);
+  const totalReps     = exerciseList.reduce((sum, e) => sum + (e.reps || 0), 0);
   const exerciseCount = exerciseList.length;
 
-  // ── Compute per-exercise quality ──
+  // calcula a qualidade média de cada exercício e o status (Excelente/Bom/Melhorar)
   const exerciseBreakdown = exerciseList.map(ex => {
     const scores = ex.qualityScores || [];
     const avgQ   = scores.length > 0
@@ -215,16 +205,15 @@ function generateReport(workoutData) {
     };
   });
 
-  // ── Overall average quality ──
   const avgQuality = exerciseBreakdown.length > 0
     ? exerciseBreakdown.reduce((sum, e) => sum + e.avgQuality / 100, 0) / exerciseBreakdown.length
     : 0;
 
-  // ── Level ──
+  // calcula o nível considerando reps de todos os treinos anteriores + esse
   const allTimeReps = totalAllTimeReps + totalReps;
   const level = calcLevel(allTimeReps, totalWorkouts);
 
-  // ── Achievement ──
+  // verifica conquistas – pega só a primeira que bater
   const achievementData = {
     totalScore,
     totalReps,
@@ -241,7 +230,7 @@ function generateReport(workoutData) {
     }
   }
 
-  // ── Improvement tips ──
+  // monta as dicas de melhoria baseadas nos problemas detectados durante o treino
   const improvements = [];
   for (const ex of exerciseBreakdown) {
     const tipMap = TIPS[ex.name];
@@ -256,25 +245,14 @@ function generateReport(workoutData) {
     }
 
     if (ex.avgQuality < 70 && tipMap['default']) {
-      // Only add default tip if no specific issues were found
       if (!ex.issues || ex.issues.length === 0) {
         improvements.push({ exercise: ex.name, tip: tipMap['default'] });
       }
     }
   }
 
-  // ── Strengths ──
-  const strengths = buildStrengths(exerciseBreakdown);
-
-  // ── Summary ──
-  const summary = buildSummary(
-    { totalReps, duration, exerciseCount },
-    exerciseBreakdown,
-    level,
-    avgQuality
-  );
-
-  // ── Next workout suggestion ──
+  const strengths           = buildStrengths(exerciseBreakdown);
+  const summary             = buildSummary({ totalReps, duration, exerciseCount }, exerciseBreakdown, level, avgQuality);
   const nextWorkoutSuggestion = buildNextSuggestion(exerciseBreakdown, level, totalReps);
 
   return {
