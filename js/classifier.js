@@ -57,6 +57,9 @@ class ExerciseClassifier {
 
     // Push-up specific
     this._pushupState = 'up';
+
+    // Custom exercise dynamic tracker (keyed by exercise name)
+    this._custState2 = {};
   }
 
   setCustomExercises(list) {
@@ -74,6 +77,7 @@ class ExerciseClassifier {
     this._jjState             = 'closed';
     this._jjOpened            = false;
     this._pushupState         = 'up';
+    this._custState2          = {};
   }
 
   // ── update ─────────────────────────────────────────────────────────────────
@@ -627,35 +631,110 @@ class ExerciseClassifier {
   }
 
   // ── _processCustomExercise ────────────────────────────────────────────────
+  // Dynamic calibration: captures initial position for 15 frames, then finds
+  // which joint moves the most toward the template (real movement, not static
+  // neutral assumption). Counts reps by midpoint crossings.
   _processCustomExercise(name, angles) {
     const result = { repCompleted: false, quality: 0.7, feedback: [] };
 
     const template = this.customExercises.find(e => e.name === name);
-    if (!template || !template.angleTemplate) {
+    if (!template?.angleTemplate) {
       result.feedback = [`Executando: ${name}`];
       return result;
     }
 
-    const key = 'custom_' + name;
-    if (!this._states[key]) this._states[key] = 'searching';
+    if (!this._custState2) this._custState2 = {};
+    let s = this._custState2[name];
 
-    const dist = this._angleDistance(angles, template.angleTemplate);
-    const isAtPeak = dist < 0.2;
-
-    if (this._states[key] === 'searching' && isAtPeak) {
-      this._states[key] = 'peak';
-      result.feedback = [`${name}: posição encontrada! Volte ao início.`];
-    } else if (this._states[key] === 'peak' && !isAtPeak) {
-      this._states[key] = 'returning';
-    } else if (this._states[key] === 'returning' && isAtPeak) {
-      result.repCompleted = true;
-      result.quality = Math.max(0, 1 - dist * 2);
-      result.feedback = [`${name}: repetição concluída!`];
-      this._states[key] = 'searching';
-    } else {
-      result.feedback = [`${name}: ${isAtPeak ? 'na posição!' : 'encontre a posição do exercício'}`];
+    // ── Phase 1: calibration (first 15 frames = ~0.5 s) ──────────────────────
+    if (!s) {
+      this._custState2[name] = s = { phase: 'cal', frames: [] };
     }
 
+    if (s.phase === 'cal') {
+      const KEYS = ['leftKnee','rightKnee','leftHip','rightHip','leftElbow','rightElbow'];
+      const snap = {};
+      for (const k of KEYS) if (angles[k] != null) snap[k] = angles[k];
+      s.frames.push(snap);
+
+      if (s.frames.length < 15) {
+        result.feedback = [`${name}: calibrando... ${s.frames.length}/15`];
+        return result;
+      }
+
+      // Average the captured frames as the "rest" baseline
+      const initial = {};
+      for (const k of KEYS) {
+        const vals = s.frames.map(f => f[k]).filter(v => v != null);
+        if (vals.length) initial[k] = vals.reduce((a,b)=>a+b,0)/vals.length;
+      }
+
+      // Find the key whose initial value differs MOST from the template
+      let primaryKey = null, maxDiff = 0;
+      for (const k of KEYS) {
+        if (initial[k] != null && template.angleTemplate[k] != null) {
+          const diff = Math.abs(initial[k] - template.angleTemplate[k]);
+          if (diff > maxDiff) { maxDiff = diff; primaryKey = k; }
+        }
+      }
+
+      if (!primaryKey || maxDiff < 10) {
+        // No distinguishable movement axis — fall back to distance method
+        s.phase    = 'dist';
+        s.initial  = initial;
+        result.feedback = [`${name}: pronto! Execute o movimento.`];
+        return result;
+      }
+
+      s.primaryKey = primaryKey;
+      s.midpoint   = (initial[primaryKey] + template.angleTemplate[primaryKey]) / 2;
+      s.goingDown  = template.angleTemplate[primaryKey] < initial[primaryKey];
+      s.phase      = 'track';
+      s.repPhase   = 'rest';
+      result.feedback = [`${name}: pronto! Execute o movimento.`];
+      return result;
+    }
+
+    // ── Phase 2a: primary-key oscillation tracking ────────────────────────────
+    if (s.phase === 'track') {
+      const val = angles[s.primaryKey];
+      if (val == null) {
+        result.feedback = ['Garanta que o corpo esteja visível'];
+        return result;
+      }
+
+      const atPeak = s.goingDown ? val < s.midpoint : val > s.midpoint;
+
+      if (s.repPhase === 'rest' && atPeak) {
+        s.repPhase = 'peak';
+        result.feedback = [`${name}: posição! Volte ao início.`];
+      } else if (s.repPhase === 'peak' && !atPeak) {
+        result.repCompleted = true;
+        result.quality = 0.8;
+        result.feedback = [`${name}: repetição! ✓`];
+        s.repPhase = 'rest';
+      } else {
+        result.feedback = [atPeak ? `${name}: volte ao início` : `${name}: execute o movimento`];
+      }
+      return result;
+    }
+
+    // ── Phase 2b: fallback distance method (no clear primary axis) ───────────
+    const dist = this._angleDistance(angles, template.angleTemplate);
+    const distToInit = s.initial ? this._angleDistance(angles, s.initial) : 1;
+    if (!s.distPhase) s.distPhase = 'rest';
+
+    if (s.distPhase === 'rest' && dist < 0.25) {
+      s.distPhase = 'peak';
+      result.feedback = [`${name}: posição! Volte ao início.`];
+    } else if (s.distPhase === 'peak' && dist > 0.30) {
+      result.repCompleted = true;
+      result.quality = 0.7;
+      result.feedback = [`${name}: repetição! ✓`];
+      s.distPhase = 'rest';
+    } else {
+      result.feedback = [dist < 0.25 ? `${name}: volte ao início` : `${name}: execute o movimento`];
+    }
     return result;
   }
 
