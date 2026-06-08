@@ -176,13 +176,21 @@ function calcDisplayLevel(totalReps, totalWorkouts) {
 // ════════════════════════════════════════════════════════════════════════════
 function showProfileScreen() {
   showScreen('profile');
-  state.profile = { sex: '' };
+  state.profile = { sex: '', location: '' };
   $('profile-age').value    = '';
   $('profile-height').value = '';
   $('profile-weight').value = '';
   document.querySelectorAll('.sex-btn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.loc-btn').forEach(b => b.classList.remove('active'));
   $('bmi-preview').style.display    = 'none';
   $('btn-generate-plan').disabled   = true;
+}
+
+function onLocSelect(loc) {
+  state.profile.location = loc;
+  document.querySelectorAll('.loc-btn').forEach(b => b.classList.remove('active'));
+  $('loc-btn-' + loc).classList.add('active');
+  updateProfileUI();
 }
 
 function onSexSelect(sex) {
@@ -193,10 +201,11 @@ function onSexSelect(sex) {
 }
 
 function updateProfileUI() {
-  const age    = parseInt($('profile-age').value)    || 0;
-  const height = parseInt($('profile-height').value) || 0;
+  const age    = parseInt($('profile-age').value)      || 0;
+  const height = parseInt($('profile-height').value)   || 0;
   const weight = parseFloat($('profile-weight').value) || 0;
-  const sex    = state.profile ? state.profile.sex : '';
+  const sex      = state.profile ? state.profile.sex      : '';
+  const location = state.profile ? state.profile.location : '';
 
   if (height > 0 && weight > 0) {
     const bmi = weight / ((height / 100) ** 2);
@@ -213,22 +222,23 @@ function updateProfileUI() {
   }
 
   const valid = age >= 14 && age <= 90 && height >= 120 && height <= 220
-             && weight >= 30 && weight <= 200 && sex;
+             && weight >= 30 && weight <= 200 && sex && location;
   $('btn-generate-plan').disabled = !valid;
 }
 
 async function submitProfile() {
-  const age    = parseInt($('profile-age').value);
-  const height = parseInt($('profile-height').value);
-  const weight = parseFloat($('profile-weight').value);
-  const sex    = state.profile ? state.profile.sex : '';
+  const age      = parseInt($('profile-age').value);
+  const height   = parseInt($('profile-height').value);
+  const weight   = parseFloat($('profile-weight').value);
+  const sex      = state.profile ? state.profile.sex      : '';
+  const location = state.profile ? state.profile.location : '';
 
-  if (!age || !height || !weight || !sex) {
-    showToast('Preencha todos os campos.', 'error');
+  if (!age || !height || !weight || !sex || !location) {
+    showToast('Preencha todos os campos e escolha o local.', 'error');
     return;
   }
 
-  state.profile = { age, sex, height, weight };
+  state.profile = { age, sex, height, weight, location };
 
   const customExercises = state.customExercises || [];
   state.plan      = generateWorkoutPlan(state.profile, customExercises);
@@ -241,7 +251,7 @@ async function submitProfile() {
     return;
   }
 
-  advanceToNextExercise();
+  showExerciseSelection();
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -261,16 +271,16 @@ function generateWorkoutPlan(profile, customExercises) {
 
   // Built-in exercises with categories
   const BUILTIN = [
-    { name: 'Agachamento', category: 'Pernas'  },
-    { name: 'Polichinelo',  category: 'Cardio'  },
-    { name: 'Flexão',       category: 'Peito'   },
-    { name: 'Avanço',       category: 'Pernas'  },
-    { name: 'Joelho Alto',  category: 'Cardio'  },
+    { name: 'Agachamento', category: 'Pernas',  location: 'home' },
+    { name: 'Polichinelo',  category: 'Cardio',  location: 'home' },
+    { name: 'Flexão',       category: 'Peito',   location: 'home' },
+    { name: 'Avanço',       category: 'Pernas',  location: 'home' },
+    { name: 'Joelho Alto',  category: 'Cardio',  location: 'home' },
   ];
 
   const pool = [
     ...BUILTIN,
-    ...customExercises.map(e => ({ name: e.name, category: e.category || 'Geral' }))
+    ...customExercises.map(e => ({ name: e.name, category: e.category || 'Geral', location: e.location || 'home' }))
   ];
 
   const used = new Set();
@@ -282,11 +292,19 @@ function generateWorkoutPlan(profile, customExercises) {
     return ex;
   }
 
-  const cardio = pool.filter(e => e.category === 'Cardio');
-  const legs   = pool.filter(e => ['Pernas','Agachamento','Afundo'].includes(e.category));
-  const upper  = pool.filter(e => ['Peito','Ombro','Bíceps','Tríceps','Costas','Flexão'].includes(e.category));
-  const core   = pool.filter(e => ['Abdômen','Prancha'].includes(e.category));
-  const glutes = pool.filter(e => e.category === 'Glúteo');
+  // Filter by location preference
+  // home: ONLY bodyweight exercises (location:'home')
+  // gym:  ALL exercises (home + gym with equipment)
+  const loc = profile.location || 'home';
+  const locationFiltered = loc === 'gym'
+    ? pool
+    : pool.filter(e => e.location === 'home' || !e.location);
+
+  const cardio = locationFiltered.filter(e => e.category === 'Cardio');
+  const legs   = locationFiltered.filter(e => ['Pernas','Agachamento','Afundo'].includes(e.category));
+  const upper  = locationFiltered.filter(e => ['Peito','Ombro','Bíceps','Tríceps','Costas','Flexão'].includes(e.category));
+  const core   = locationFiltered.filter(e => ['Abdômen','Prancha','Core'].includes(e.category));
+  const glutes = locationFiltered.filter(e => e.category === 'Glúteo');
 
   const selected = [];
 
@@ -315,12 +333,130 @@ function generateWorkoutPlan(profile, customExercises) {
 
   // Guarantee at least 4 exercises
   while (selected.length < 4) {
-    const e = pick(pool);
+    const e = pick(locationFiltered);
     if (!e) break;
     selected.push(e);
   }
 
   return selected.map(ex => ({ name: ex.name, category: ex.category, sets, repsPerSet, restSeconds, level }));
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// EXERCISE SELECTION SCREEN
+// ════════════════════════════════════════════════════════════════════════════
+function showExerciseSelection() {
+  const item0    = state.plan[0];
+  const locLabel = state.profile.location === 'home' ? '🏠 Casa' : '🏋️ Academia';
+  $('select-subtitle').textContent =
+    `${locLabel} · ${item0?.level || ''} · ${state.plan.length} exercícios`;
+
+  renderSelectionList();
+  showScreen('select');
+}
+
+function renderSelectionList() {
+  const list = $('select-list');
+  list.innerHTML = '';
+
+  state.plan.forEach((item, idx) => {
+    const info   = EXERCISE_INFO[item.name] || {};
+    const isHome = item.location === 'home';
+    const locTag = isHome
+      ? '<span class="sel-card-loc loc-home-tag">🏠 Casa</span>'
+      : '<span class="sel-card-loc loc-gym-tag">🏋️ Academia</span>';
+
+    const card = document.createElement('div');
+    card.className = 'sel-card active';
+    card.dataset.idx = idx;
+    card.innerHTML = `
+      <div class="sel-check">✓</div>
+      <span class="sel-card-icon">${info.icon || '🏋️'}</span>
+      <div class="sel-card-info">
+        <div class="sel-card-name">${item.name}</div>
+        <div class="sel-card-meta">${item.category} · ${item.sets}×${item.repsPerSet} reps</div>
+      </div>
+      ${locTag}
+      <button class="btn-swap" data-idx="${idx}">↺ Trocar</button>
+    `;
+
+    // Toggle include/exclude
+    card.addEventListener('click', (e) => {
+      if (e.target.classList.contains('btn-swap')) return;
+      card.classList.toggle('active');
+      card.classList.toggle('inactive');
+      const check = card.querySelector('.sel-check');
+      check.textContent = card.classList.contains('active') ? '✓' : '';
+    });
+
+    // Swap exercise
+    card.querySelector('.btn-swap').addEventListener('click', (e) => {
+      e.stopPropagation();
+      swapExercise(idx);
+    });
+
+    list.appendChild(card);
+  });
+}
+
+function swapExercise(idx) {
+  const current   = state.plan[idx];
+  const currentNames = new Set(state.plan.map(e => e.name));
+  const loc       = state.profile.location || 'home';
+  const allEx     = state.customExercises || [];
+
+  // Pool of same category and location not already in plan
+  const BUILTIN_POOL = [
+    { name:'Agachamento', category:'Pernas',  location:'home' },
+    { name:'Polichinelo', category:'Cardio',  location:'home' },
+    { name:'Flexão',      category:'Peito',   location:'home' },
+    { name:'Avanço',      category:'Pernas',  location:'home' },
+    { name:'Joelho Alto', category:'Cardio',  location:'home' },
+  ];
+  const fullPool = [...BUILTIN_POOL, ...allEx.map(e => ({ name:e.name, category:e.category, location:e.location||'home' }))];
+
+  const candidates = fullPool.filter(e =>
+    !currentNames.has(e.name) &&
+    e.category === current.category &&
+    (e.location === loc || e.location === 'both')
+  );
+
+  if (!candidates.length) {
+    showToast('Sem alternativas disponíveis para essa categoria.', 'info');
+    return;
+  }
+
+  const pick = candidates[Math.floor(Math.random() * candidates.length)];
+  state.plan[idx] = { ...state.plan[idx], name: pick.name, category: pick.category, location: pick.location };
+  renderSelectionList();
+}
+
+function startPlanFromSelection() {
+  const cards = document.querySelectorAll('#select-list .sel-card');
+  const active = [];
+  cards.forEach((card, i) => {
+    if (card.classList.contains('active')) active.push(state.plan[i]);
+  });
+
+  if (!active.length) {
+    showToast('Selecione ao menos um exercício.', 'error');
+    return;
+  }
+
+  state.plan      = active;
+  state.planIndex = -1;
+  state.setIndex  = 0;
+  state.setReps   = 0;
+  advanceToNextExercise();
+}
+
+function regenPlan() {
+  const customExercises = state.customExercises || [];
+  state.plan = generateWorkoutPlan(state.profile, customExercises);
+  showToast('Novo treino gerado!', 'success', 1500);
+  renderSelectionList();
+  const locLabel = state.profile.location === 'home' ? '🏠 Casa' : '🏋️ Academia';
+  $('select-subtitle').textContent =
+    `${locLabel} · ${state.plan[0]?.level || ''} · ${state.plan.length} exercícios`;
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -1319,11 +1455,17 @@ function init() {
   // Profile screen
   _on('btn-generate-plan', 'click', submitProfile);
   _on('btn-back-profile',  'click', () => showScreen('home'));
+  _on('loc-btn-home', 'click', () => onLocSelect('home'));
+  _on('loc-btn-gym',  'click', () => onLocSelect('gym'));
   _on('sex-btn-M', 'click', () => onSexSelect('M'));
   _on('sex-btn-F', 'click', () => onSexSelect('F'));
   _on('profile-age',    'input', updateProfileUI);
   _on('profile-height', 'input', updateProfileUI);
   _on('profile-weight', 'input', updateProfileUI);
+
+  // Exercise selection screen
+  _on('btn-start-plan', 'click', startPlanFromSelection);
+  _on('btn-regen-plan', 'click', regenPlan);
 
   // Demo screen
   _on('btn-demo-start', 'click', startGuidedExercise);
