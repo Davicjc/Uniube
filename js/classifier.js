@@ -806,18 +806,20 @@ class ExerciseClassifier {
 // ════════════════════════════════════════════════════════════════════════════
 class ExerciseRecorder {
   constructor() {
-    this.name      = '';
-    this.frames    = [];
-    this.recording = false;
+    this.name            = '';
+    this.frames          = [];
+    this._landmarkFrames = [];
+    this.recording       = false;
   }
 
   startRecording(name) {
-    this.name      = name;
-    this.frames    = [];
-    this.recording = true;
+    this.name            = name;
+    this.frames          = [];
+    this._landmarkFrames = [];
+    this.recording       = true;
   }
 
-  addFrame(angles) {
+  addFrame(angles, landmarks) {
     if (!this.recording || !angles) return;
     // Store only the 6 key angles we use for matching
     const keys = ['leftKnee', 'rightKnee', 'leftHip', 'rightHip', 'leftElbow', 'rightElbow'];
@@ -826,10 +828,37 @@ class ExerciseRecorder {
       frame[k] = angles[k] !== null && angles[k] !== undefined ? angles[k] : null;
     }
     this.frames.push(frame);
+
+    // Store compact landmark positions for 3D playback (only what we need)
+    if (landmarks && window.LANDMARKS) {
+      const L = window.LANDMARKS;
+      const snap = {};
+      const save = (key, idx) => {
+        const lm = landmarks[idx];
+        if (lm && (lm.visibility === undefined || lm.visibility > 0.3)) {
+          snap[key] = { x: Math.round(lm.x * 1000) / 1000, y: Math.round(lm.y * 1000) / 1000 };
+        }
+      };
+      save('nose', L.NOSE);
+      save('lS',   L.LEFT_SHOULDER);
+      save('rS',   L.RIGHT_SHOULDER);
+      save('lE',   L.LEFT_ELBOW);
+      save('rE',   L.RIGHT_ELBOW);
+      save('lW',   L.LEFT_WRIST);
+      save('rW',   L.RIGHT_WRIST);
+      save('lH',   L.LEFT_HIP);
+      save('rH',   L.RIGHT_HIP);
+      save('lK',   L.LEFT_KNEE);
+      save('rK',   L.RIGHT_KNEE);
+      save('lA',   L.LEFT_ANKLE);
+      save('rA',   L.RIGHT_ANKLE);
+      this._landmarkFrames.push(snap);
+    }
   }
 
   /**
-   * stopRecording – Computes the average angle template from captured frames.
+   * stopRecording – Computes the average angle template from captured frames
+   * and extracts the real landmark animation data.
    * Returns an exercise template object ready to save.
    */
   stopRecording() {
@@ -861,10 +890,37 @@ class ExerciseRecorder {
       }, 0);
       if (dev > maxDev) { maxDev = dev; peakIdx = i; }
     });
-    // Average a small window around the peak frame for stability
     const lo = Math.max(0, peakIdx - 3);
     const hi = Math.min(this.frames.length, peakIdx + 4);
     const peakAngles = avgFrames(this.frames.slice(lo, hi));
+
+    // Build 3D animation data from real landmark positions
+    let animFrames  = null;
+    let motionRange = null;
+
+    if (this._landmarkFrames.length >= 5) {
+      const src = this._landmarkFrames;
+
+      // Downsample to at most 30 frames to keep Firestore payload small
+      const TARGET = Math.min(src.length, 30);
+      animFrames = [];
+      for (let i = 0; i < TARGET; i++) {
+        animFrames.push(src[Math.floor(i * src.length / TARGET)]);
+      }
+
+      // Compute per-joint motion range (max − min of normalized coords)
+      // so the 3D player knows which joints actually moved during recording
+      const jKeys = ['nose','lS','rS','lE','rE','lW','rW','lH','rH','lK','rK','lA','rA'];
+      motionRange = {};
+      for (const k of jKeys) {
+        const xs = animFrames.map(f => f[k]?.x).filter(v => v != null);
+        const ys = animFrames.map(f => f[k]?.y).filter(v => v != null);
+        if (xs.length < 2) { motionRange[k] = 0; continue; }
+        const rx = Math.max(...xs) - Math.min(...xs);
+        const ry = Math.max(...ys) - Math.min(...ys);
+        motionRange[k] = Math.round(Math.max(rx, ry) * 1000) / 1000;
+      }
+    }
 
     const template = {
       name:          this.name,
@@ -875,7 +931,13 @@ class ExerciseRecorder {
       createdAt:     new Date().toISOString()
     };
 
-    this.frames = [];
+    if (animFrames) {
+      template.animFrames  = animFrames;
+      template.motionRange = motionRange;
+    }
+
+    this.frames          = [];
+    this._landmarkFrames = [];
     return template;
   }
 

@@ -8,11 +8,12 @@
 // SyntaxError: multiple <script> tags share the global lexical scope, so
 // re-declaring names already bound by config.js / pose.js / classifier.js
 // (as functions or classes) throws "Identifier has already been declared".
-const _cfg                = window.FitAIConfig        || {};
-const _saveWorkout        = _cfg.saveWorkout           || function() {};
-const _getWorkouts        = _cfg.getWorkouts           || function() { return []; };
-const _saveCustomExercise = _cfg.saveCustomExercise    || function() {};
-const _getCustomExercises = _cfg.getCustomExercises    || function() { return []; };
+const _cfg                  = window.FitAIConfig          || {};
+const _saveWorkout          = _cfg.saveWorkout             || function() {};
+const _getWorkouts          = _cfg.getWorkouts             || function() { return []; };
+const _saveCustomExercise   = _cfg.saveCustomExercise      || function() {};
+const _getCustomExercises   = _cfg.getCustomExercises      || function() { return []; };
+const _deleteCustomExercise = _cfg.deleteCustomExercise    || function() {};
 const _generateReport     = window.generateReport      || function() { return {}; };
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -528,8 +529,10 @@ function showExerciseDemo() {
   if (state.char3d) {
     state.char3d.resize();
     const customEx = (state.customExercises || []).find(e => e.name === item.name);
-    if (customEx?.peakAngles) {
-      state.char3d.playCustom(customEx.peakAngles);
+    if (customEx?.animFrames) {
+      state.char3d.playRecorded(customEx.animFrames, customEx.motionRange);
+    } else if (customEx) {
+      state.char3d.stop();
     } else {
       state.char3d.playExercise(item.name);
     }
@@ -1271,7 +1274,7 @@ function onRecordPoseResults(results) {
 
   const angles = window.PoseDetector.getKeyAngles(results.poseLandmarks);
   if (angles && state.recording.recorder) {
-    state.recording.recorder.addFrame(angles);
+    state.recording.recorder.addFrame(angles, results.poseLandmarks);
     $('recording-frames').textContent = `${state.recording.recorder.frameCount} frames`;
   }
 }
@@ -1500,10 +1503,10 @@ function renderExLibList() {
   const search = (state.exlibSearch || '').trim().toLowerCase();
 
   // Merge builtin + custom, deduplicate by name
-  const allEx = [...BUILTIN_EXERCISES];
+  const allEx = [...BUILTIN_EXERCISES.map(e => ({ ...e, isCustom: false }))];
   (state.customExercises || []).forEach(ce => {
     if (!allEx.find(e => e.name === ce.name)) {
-      allEx.push({ name: ce.name, category: ce.category || 'Geral', location: ce.location || 'home' });
+      allEx.push({ name: ce.name, category: ce.category || 'Geral', location: ce.location || 'home', id: ce.id, isCustom: true });
     }
   });
 
@@ -1534,9 +1537,18 @@ function renderExLibList() {
         <div class="exlib-item-name">${ex.name}</div>
         <div class="exlib-item-cat">${ex.category || 'Geral'}</div>
       </div>
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#444" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+      ${ex.isCustom
+        ? '<button class="btn-exlib-delete" title="Apagar exercício">🗑</button>'
+        : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#444" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>'
+      }
     `;
     item.addEventListener('click', () => selectLibEx(ex));
+    if (ex.isCustom) {
+      item.querySelector('.btn-exlib-delete').addEventListener('click', (e) => {
+        e.stopPropagation();
+        deleteLibEx(ex);
+      });
+    }
     list.appendChild(item);
   });
 
@@ -1560,15 +1572,46 @@ function selectLibEx(ex) {
   $('exlib-preview-name').textContent = ex.name;
   $('exlib-preview-meta').textContent = info.muscles || ex.category || 'Geral';
 
-  // Play 3D character — use recorded angles for custom exercises
+  // Play 3D character — use real recorded frames for custom exercises
   if (state.charLib) {
     state.charLib.resize();
     const fullEx = (state.customExercises || []).find(e => e.name === ex.name);
-    if (fullEx?.peakAngles) {
-      state.charLib.playCustom(fullEx.peakAngles);
+    if (fullEx?.animFrames) {
+      state.charLib.playRecorded(fullEx.animFrames, fullEx.motionRange);
+    } else if (fullEx) {
+      state.charLib.stop();
     } else {
       state.charLib.playExercise(ex.name);
     }
+  }
+}
+
+async function deleteLibEx(ex) {
+  if (!confirm(`Apagar "${ex.name}"? Esta ação não pode ser desfeita.`)) return;
+
+  try {
+    await _deleteCustomExercise(ex.id);
+    state.customExercises = (state.customExercises || []).filter(e => e.id !== ex.id);
+
+    if (state.exlibSelected === ex.name) {
+      state.exlibSelected = null;
+      $('exlib-preview-name').textContent = 'Selecione um exercício';
+      $('exlib-preview-meta').textContent = '—';
+      if (state.charLib) state.charLib.stop();
+    }
+
+    showToast(`"${ex.name}" apagado.`, 'success');
+    renderExLibList();
+
+    const chip = $('custom-exercises-chip');
+    if (chip) {
+      const n = state.customExercises.length;
+      chip.textContent = n > 0
+        ? `+ ${n} Personalizado${n !== 1 ? 's' : ''}`
+        : '+ Personalizados';
+    }
+  } catch (err) {
+    showToast('Erro ao apagar: ' + err.message, 'error');
   }
 }
 

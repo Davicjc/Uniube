@@ -278,23 +278,8 @@ const SWAY = {
   rHip:j( .12,.93,0),rKnee:j( .14,.52,0),rAnkle:j( .12,.05,0),
 };
 
-// ── Reference peak angles per animation type ────────────────────────────────
-// Used by playCustom() to find the best-matching animation for a recorded exercise.
-// Values are approximate joint angles (degrees) at the most-contracted position.
-const PEAK_REF = {
-  squat:    {lK: 88, rK: 88, lH: 98,  rH: 98,  lE: 128, rE: 128},
-  pushup:   {lK:170, rK:170, lH:170,  rH:170,  lE:  75, rE:  75},
-  jack:     {lK:170, rK:170, lH:148,  rH:148,  lE: 148, rE: 148},
-  lunge:    {lK: 92, rK:165, lH:100,  rH:165,  lE: 155, rE: 155},
-  highknee: {lK: 90, rK:170, lH:  72, rH:165,  lE:  80, rE:  80},
-  bridge:   {lK: 95, rK: 95, lH:130,  rH:130,  lE: 165, rE: 165},
-  crunch:   {lK:100, rK:100, lH: 98,  rH: 98,  lE: 118, rE: 118},
-  curl:     {lK:170, rK:170, lH:170,  rH:170,  lE:  45, rE:  45},
-  row:      {lK:170, rK:170, lH:132,  rH:132,  lE:  92, rE:  92},
-  tricep:   {lK:170, rK:170, lH:170,  rH:170,  lE:  78, rE:  78},
-  calf:     {lK:170, rK:170, lH:170,  rH:170,  lE: 152, rE: 152},
-  step:     {lK: 92, rK:170, lH: 90,  rH:170,  lE: 152, rE: 152},
-};
+// Motion threshold (character units): joints with less range of motion stay still
+const MOTION_THRESH = 0.04;
 
 // ── Animation config table ───────────────────────────────────────────────────
 // camY: camera look-at Y target (adjusts for floor vs standing exercises)
@@ -374,13 +359,17 @@ class FitAIChar {
     }
 
     // State
-    this._pA    = STAND;
-    this._pB    = SWAY;
-    this._t     = 0;
-    this._dir   = 1;
-    this._spd   = .015;
-    this._rotY  = 0;
-    this._on    = false;
+    this._pA       = STAND;
+    this._pB       = SWAY;
+    this._t        = 0;
+    this._dir      = 1;
+    this._spd      = .015;
+    this._rotY     = 0;
+    this._on       = false;
+    this._mode     = 'pose';   // 'pose' | 'recorded'
+    this._recPoses = null;
+    this._recIdx   = 0;
+    this._recDir   = 1;
 
     this._v1 = new THREE.Vector3();
     this._v2 = new THREE.Vector3();
@@ -403,6 +392,7 @@ class FitAIChar {
 
   playExercise(name) {
     const cfg = ANIMS[animType(name)] || ANIMS.default;
+    this._mode     = 'pose';
     this._pA       = cfg.a;
     this._pB       = cfg.b;
     this._spd      = cfg.speed;
@@ -412,41 +402,101 @@ class FitAIChar {
     this._on       = true;
   }
 
-  // Picks the best-matching animation based on recorded peak angles.
-  // peakAngles: {leftKnee, rightKnee, leftHip, rightHip, leftElbow, rightElbow}
-  playCustom(peakAngles) {
-    if (!peakAngles) { this.playExercise(''); return; }
-    const type = this._findBestAnim(peakAngles);
-    const cfg  = ANIMS[type] || ANIMS.default;
-    this._pA       = cfg.a;
-    this._pB       = cfg.b;
-    this._spd      = cfg.speed;
-    this._camTargY = cfg.camY;
-    this._t        = 0;
-    this._dir      = 1;
-    this._on       = true;
-  }
+  // Plays back the real landmark positions captured during recording.
+  // animFrames: [{nose,lS,rS,lE,rE,lW,rW,lH,rH,lK,rK,lA,rA}, ...]
+  // motionRange: {nose:0.12, lS:0.05, ...} — range of motion per joint in MP coords
+  playRecorded(animFrames, motionRange) {
+    if (!animFrames || animFrames.length === 0) { this.stop(); return; }
 
-  _findBestAnim(pa) {
-    // Map full angle keys to PEAK_REF short keys
-    const map = [
-      ['lK','leftKnee'],['rK','rightKnee'],
-      ['lH','leftHip'], ['rH','rightHip'],
-      ['lE','leftElbow'],['rE','rightElbow']
-    ];
-    let best = 'default', bestDist = Infinity;
-    for (const [type, ref] of Object.entries(PEAK_REF)) {
-      let dist = 0;
-      for (const [s, full] of map) {
-        const v = pa[full] ?? ref[s];
-        dist += (v - ref[s]) ** 2;
+    // Compute reference scale from first frame that has hips and shoulders visible
+    let scale = 2.1; // default: char units per MP normalized unit
+    let anchorX = 0.5;
+    for (const f of animFrames) {
+      if (f.lH && f.rH && f.lS && f.rS) {
+        const midHy = (f.lH.y + f.rH.y) / 2;
+        const midSy = (f.lS.y + f.rS.y) / 2;
+        const midHx = (f.lH.x + f.rH.x) / 2;
+        const mpDist = Math.abs(midHy - midSy);
+        if (mpDist > 0.02) { scale = 0.53 / mpDist; anchorX = midHx; }
+        break;
       }
-      if (dist < bestDist) { bestDist = dist; best = type; }
     }
-    return best;
+
+    // Convert one MediaPipe frame into character joint positions.
+    // x is flipped because in raw MP coords, person's left appears at higher x (right of image).
+    const mpToChar = (f) => {
+      const midHx = f.lH && f.rH ? (f.lH.x + f.rH.x) / 2 : anchorX;
+      const midHy = f.lH && f.rH ? (f.lH.y + f.rH.y) / 2 : 0.5;
+      const midSy = f.lS && f.rS ? (f.lS.y + f.rS.y) / 2 : midHy - 0.53 / scale;
+
+      const toC = (lm) => lm
+        ? { x: (midHx - lm.x) * scale, y: 0.93 + (midHy - lm.y) * scale, z: 0 }
+        : null;
+
+      const chestY  = 0.93 + Math.abs(midHy - midSy) * scale * 0.55;
+      const neckY   = 0.93 + Math.abs(midHy - midSy) * scale * 0.85;
+
+      return {
+        pelvis:    { x: 0, y: 0.93, z: 0 },
+        chest:     f.lS && f.rS ? { x: 0, y: chestY, z: 0 } : STAND.chest,
+        neck:      f.lS && f.rS ? { x: 0, y: neckY,  z: 0 } : STAND.neck,
+        head:      toC(f.nose) || STAND.head,
+        lShoulder: toC(f.lS)  || STAND.lShoulder,
+        rShoulder: toC(f.rS)  || STAND.rShoulder,
+        lElbow:    toC(f.lE)  || STAND.lElbow,
+        rElbow:    toC(f.rE)  || STAND.rElbow,
+        lWrist:    toC(f.lW)  || STAND.lWrist,
+        rWrist:    toC(f.rW)  || STAND.rWrist,
+        lHip:      toC(f.lH)  || STAND.lHip,
+        rHip:      toC(f.rH)  || STAND.rHip,
+        lKnee:     toC(f.lK)  || STAND.lKnee,
+        rKnee:     toC(f.rK)  || STAND.rKnee,
+        lAnkle:    toC(f.lA)  || STAND.lAnkle,
+        rAnkle:    toC(f.rA)  || STAND.rAnkle,
+      };
+    };
+
+    const charPoses = animFrames.map(mpToChar);
+
+    // Compute mean pose (used as rest position for joints that didn't move)
+    const meanPose = {};
+    for (const j of JOINTS) {
+      const xs = charPoses.map(p => p[j]?.x).filter(v => v != null);
+      const ys = charPoses.map(p => p[j]?.y).filter(v => v != null);
+      meanPose[j] = xs.length
+        ? { x: xs.reduce((a,b)=>a+b,0)/xs.length, y: ys.reduce((a,b)=>a+b,0)/ys.length, z: 0 }
+        : STAND[j];
+    }
+
+    // For each joint: measure variance in character space.
+    // Joints that barely moved keep the mean position — only real motion animates.
+    const movedJoints = new Set();
+    for (const j of JOINTS) {
+      const xs = charPoses.map(p => p[j]?.x).filter(v => v != null);
+      const ys = charPoses.map(p => p[j]?.y).filter(v => v != null);
+      if (xs.length < 2) continue;
+      const rx = Math.max(...xs) - Math.min(...xs);
+      const ry = Math.max(...ys) - Math.min(...ys);
+      if (Math.max(rx, ry) > MOTION_THRESH) movedJoints.add(j);
+    }
+
+    // Build filtered animation poses: real position for moved joints, mean for still ones
+    this._recPoses = charPoses.map(charPose => {
+      const pose = {};
+      for (const j of JOINTS) {
+        pose[j] = movedJoints.has(j) ? charPose[j] : meanPose[j];
+      }
+      return pose;
+    });
+
+    this._mode     = 'recorded';
+    this._recIdx   = 0;
+    this._recDir   = 1;
+    this._camTargY = 0.9;
+    this._on       = true;
   }
 
-  stop() { this._on = false; }
+  stop() { this._on = false; this._mode = 'pose'; }
 
   // Eased lerp between two poses
   _lerp(a, b, t) {
@@ -455,6 +505,16 @@ class FitAIChar {
     for (const k of JOINTS) {
       const pa = a[k]||STAND[k], pb = b[k]||STAND[k];
       out[k] = {x:pa.x+(pb.x-pa.x)*e, y:pa.y+(pb.y-pa.y)*e, z:pa.z+(pb.z-pa.z)*e};
+    }
+    return out;
+  }
+
+  // Linear lerp between two recorded poses (no easing needed — frames are already smooth)
+  _lerpPoses(a, b, t) {
+    const out = {};
+    for (const k of JOINTS) {
+      const pa = a[k]||STAND[k], pb = b[k]||STAND[k];
+      out[k] = {x:pa.x+(pb.x-pa.x)*t, y:pa.y+(pb.y-pa.y)*t, z:pa.z+(pb.z-pa.z)*t};
     }
     return out;
   }
@@ -488,16 +548,29 @@ class FitAIChar {
       return;
     }
 
-    // Ping-pong pose interpolation
-    this._t += this._dir * this._spd;
-    if (this._t >= 1){this._t=1; this._dir=-1;}
-    if (this._t <= 0){this._t=0; this._dir= 1;}
+    let pose;
+
+    if (this._mode === 'recorded' && this._recPoses && this._recPoses.length > 0) {
+      // Advance through recorded frames (ping-pong)
+      this._recIdx += this._recDir * 0.08;
+      if (this._recIdx >= this._recPoses.length - 1) { this._recIdx = this._recPoses.length - 1; this._recDir = -1; }
+      if (this._recIdx <= 0) { this._recIdx = 0; this._recDir = 1; }
+
+      // Interpolate between adjacent recorded frames for smooth playback
+      const i0 = Math.floor(this._recIdx);
+      const i1 = Math.min(i0 + 1, this._recPoses.length - 1);
+      pose = this._lerpPoses(this._recPoses[i0], this._recPoses[i1], this._recIdx - i0);
+    } else {
+      // Ping-pong pose interpolation (built-in exercises)
+      this._t += this._dir * this._spd;
+      if (this._t >= 1){this._t=1; this._dir=-1;}
+      if (this._t <= 0){this._t=0; this._dir= 1;}
+      pose = this._lerp(this._pA, this._pB, this._t);
+    }
 
     // Slow Y-axis rotation for 3D effect
     this._rotY += .007;
     const cy = Math.cos(this._rotY), sy = Math.sin(this._rotY);
-
-    const pose = this._lerp(this._pA, this._pB, this._t);
 
     // Apply Y rotation (around world Y)
     const rot = {};
