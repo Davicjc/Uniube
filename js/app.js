@@ -527,7 +527,12 @@ function showExerciseDemo() {
 
   if (state.char3d) {
     state.char3d.resize();
-    state.char3d.playExercise(item.name);
+    const customEx = (state.customExercises || []).find(e => e.name === item.name);
+    if (customEx?.peakAngles) {
+      state.char3d.playCustom(customEx.peakAngles);
+    } else {
+      state.char3d.playExercise(item.name);
+    }
   }
 }
 
@@ -1555,10 +1560,15 @@ function selectLibEx(ex) {
   $('exlib-preview-name').textContent = ex.name;
   $('exlib-preview-meta').textContent = info.muscles || ex.category || 'Geral';
 
-  // Play 3D character
+  // Play 3D character — use recorded angles for custom exercises
   if (state.charLib) {
     state.charLib.resize();
-    state.charLib.playExercise(ex.name);
+    const fullEx = (state.customExercises || []).find(e => e.name === ex.name);
+    if (fullEx?.peakAngles) {
+      state.charLib.playCustom(fullEx.peakAngles);
+    } else {
+      state.charLib.playExercise(ex.name);
+    }
   }
 }
 

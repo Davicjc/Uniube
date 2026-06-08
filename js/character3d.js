@@ -278,6 +278,24 @@ const SWAY = {
   rHip:j( .12,.93,0),rKnee:j( .14,.52,0),rAnkle:j( .12,.05,0),
 };
 
+// ── Reference peak angles per animation type ────────────────────────────────
+// Used by playCustom() to find the best-matching animation for a recorded exercise.
+// Values are approximate joint angles (degrees) at the most-contracted position.
+const PEAK_REF = {
+  squat:    {lK: 88, rK: 88, lH: 98,  rH: 98,  lE: 128, rE: 128},
+  pushup:   {lK:170, rK:170, lH:170,  rH:170,  lE:  75, rE:  75},
+  jack:     {lK:170, rK:170, lH:148,  rH:148,  lE: 148, rE: 148},
+  lunge:    {lK: 92, rK:165, lH:100,  rH:165,  lE: 155, rE: 155},
+  highknee: {lK: 90, rK:170, lH:  72, rH:165,  lE:  80, rE:  80},
+  bridge:   {lK: 95, rK: 95, lH:130,  rH:130,  lE: 165, rE: 165},
+  crunch:   {lK:100, rK:100, lH: 98,  rH: 98,  lE: 118, rE: 118},
+  curl:     {lK:170, rK:170, lH:170,  rH:170,  lE:  45, rE:  45},
+  row:      {lK:170, rK:170, lH:132,  rH:132,  lE:  92, rE:  92},
+  tricep:   {lK:170, rK:170, lH:170,  rH:170,  lE:  78, rE:  78},
+  calf:     {lK:170, rK:170, lH:170,  rH:170,  lE: 152, rE: 152},
+  step:     {lK: 92, rK:170, lH: 90,  rH:170,  lE: 152, rE: 152},
+};
+
 // ── Animation config table ───────────────────────────────────────────────────
 // camY: camera look-at Y target (adjusts for floor vs standing exercises)
 const ANIMS = {
@@ -392,6 +410,40 @@ class FitAIChar {
     this._t        = 0;
     this._dir      = 1;
     this._on       = true;
+  }
+
+  // Picks the best-matching animation based on recorded peak angles.
+  // peakAngles: {leftKnee, rightKnee, leftHip, rightHip, leftElbow, rightElbow}
+  playCustom(peakAngles) {
+    if (!peakAngles) { this.playExercise(''); return; }
+    const type = this._findBestAnim(peakAngles);
+    const cfg  = ANIMS[type] || ANIMS.default;
+    this._pA       = cfg.a;
+    this._pB       = cfg.b;
+    this._spd      = cfg.speed;
+    this._camTargY = cfg.camY;
+    this._t        = 0;
+    this._dir      = 1;
+    this._on       = true;
+  }
+
+  _findBestAnim(pa) {
+    // Map full angle keys to PEAK_REF short keys
+    const map = [
+      ['lK','leftKnee'],['rK','rightKnee'],
+      ['lH','leftHip'], ['rH','rightHip'],
+      ['lE','leftElbow'],['rE','rightElbow']
+    ];
+    let best = 'default', bestDist = Infinity;
+    for (const [type, ref] of Object.entries(PEAK_REF)) {
+      let dist = 0;
+      for (const [s, full] of map) {
+        const v = pa[full] ?? ref[s];
+        dist += (v - ref[s]) ** 2;
+      }
+      if (dist < bestDist) { bestDist = dist; best = type; }
+    }
+    return best;
   }
 
   stop() { this._on = false; }

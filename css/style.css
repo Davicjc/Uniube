@@ -999,6 +999,7 @@ button:focus-visible { outline: 2px solid var(--accent-green); outline-offset: 2
   #screen-workout .workout-layout {
     display: flex;
     flex-direction: column;
+    align-items: stretch;
     flex: 1;
     min-height: 0;
     position: relative;
@@ -1103,6 +1104,108 @@ button:focus-visible { outline: 2px solid var(--accent-green); outline-offset: 2
 
   /* Rest overlay: fill the full workout area */
   #screen-workout .rest-overlay { border-radius: 0; }
+}
+
+/* ==============================================================
+   RECORD – MOBILE  (portrait phones ≤ 640 px)
+   ============================================================== */
+@media (max-width: 640px) {
+
+  #screen-record {
+    padding: 0;
+    height: calc(100vh - 58px);
+    overflow: hidden;
+  }
+
+  #screen-record.active {
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* Camera: compact top strip (recording needs less height than workout) */
+  #screen-record .camera-container {
+    flex-shrink: 0;
+    height: 36vh;
+    min-height: 180px;
+    max-height: none;
+    aspect-ratio: unset;
+    border-radius: 0 0 20px 20px;
+    border-top: none;
+    border-left: none;
+    border-right: none;
+  }
+
+  /* Record panel: fills remaining space */
+  #screen-record .workout-layout {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    flex: 1;
+    min-height: 0;
+    gap: 0;
+    max-width: none;
+    margin: 0;
+  }
+
+  #screen-record .workout-panel {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    border: none;
+    border-radius: 0;
+    background: var(--bg-primary);
+    padding: 10px 16px 12px;
+    gap: 8px;
+  }
+
+  /* Title: hidden on mobile (screen context is clear) */
+  #screen-record .panel-title { display: none; }
+
+  /* Input: tight */
+  #screen-record .input-field { padding: 9px 12px; font-size: 15px; }
+
+  /* Instructions: compact single-column */
+  #screen-record .record-instructions {
+    padding: 9px 12px;
+  }
+
+  #screen-record .instructions-title { font-size: 11px; margin-bottom: 6px; }
+
+  #screen-record .instructions-list { padding-left: 14px; }
+
+  #screen-record .instructions-list li {
+    font-size: 11px;
+    margin-bottom: 3px;
+    line-height: 1.4;
+  }
+
+  /* Recording status: compact */
+  #screen-record .recording-status { padding: 7px 12px; }
+
+  /* Buttons: row layout, sticky at bottom */
+  #screen-record .record-actions {
+    position: sticky;
+    bottom: 0;
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 6px;
+    background: linear-gradient(to bottom, transparent, var(--bg-primary) 35%);
+    padding: 12px 0 6px;
+    margin-top: auto;
+  }
+
+  #screen-record .record-actions button {
+    flex: 1;
+    min-width: 0;
+    font-size: 13px;
+    padding: 10px 6px;
+  }
+
+  /* "Iniciar" takes full width row, save+cancel share second row */
+  #screen-record #btn-start-recording { flex-basis: 100%; }
+  #screen-record #btn-save-recording  { flex: 1; }
+  #screen-record #btn-cancel-recording{ flex: 1; }
 }
 
 /* ==============================================================

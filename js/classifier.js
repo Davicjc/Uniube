@@ -837,20 +837,39 @@ class ExerciseRecorder {
     if (this.frames.length === 0) return null;
 
     const keys = ['leftKnee', 'rightKnee', 'leftHip', 'rightHip', 'leftElbow', 'rightElbow'];
-    const angleTemplate = {};
 
-    for (const k of keys) {
-      const vals = this.frames
-        .map(f => f[k])
-        .filter(v => v !== null && v !== undefined);
-      angleTemplate[k] = vals.length > 0
-        ? vals.reduce((a, b) => a + b, 0) / vals.length
-        : null;
-    }
+    // Helper: average a slice of frames
+    const avgFrames = (slice) => {
+      const out = {};
+      for (const k of keys) {
+        const vals = slice.map(f => f[k]).filter(v => v !== null && v !== undefined);
+        out[k] = vals.length > 0 ? vals.reduce((a, b) => a + b, 0) / vals.length : null;
+      }
+      return out;
+    };
+
+    // Average template (all frames) – used for recognition
+    const angleTemplate = avgFrames(this.frames);
+
+    // Peak frame: the frame MOST deviated from neutral standing position
+    const NEUTRAL = {leftKnee:170, rightKnee:170, leftHip:170, rightHip:170, leftElbow:165, rightElbow:165};
+    let maxDev = -1, peakIdx = 0;
+    this.frames.forEach((f, i) => {
+      const dev = keys.reduce((s, k) => {
+        const v = f[k] ?? NEUTRAL[k];
+        return s + (v - NEUTRAL[k]) ** 2;
+      }, 0);
+      if (dev > maxDev) { maxDev = dev; peakIdx = i; }
+    });
+    // Average a small window around the peak frame for stability
+    const lo = Math.max(0, peakIdx - 3);
+    const hi = Math.min(this.frames.length, peakIdx + 4);
+    const peakAngles = avgFrames(this.frames.slice(lo, hi));
 
     const template = {
       name:          this.name,
       angleTemplate,
+      peakAngles,
       signature:     this._computeSignature(angleTemplate),
       frameCount:    this.frames.length,
       createdAt:     new Date().toISOString()
