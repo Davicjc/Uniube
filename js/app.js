@@ -24,7 +24,7 @@ const state = {
   workout: {
     active:          false,
     startTime:       null,
-    exercises:       {},      // { [name]: { name, type, reps, qualityScores, issues, score } }
+    exercises:       {},
     currentExercise: null,
     totalScore:      0,
     lastRepCount:    0
@@ -39,12 +39,77 @@ const state = {
     captureTimer:  null
   },
 
-  poseDetector: null,  // active PoseDetector instance
-  classifier:   null,  // ExerciseClassifier instance
+  // Guided workout plan state
+  profile:    null,   // { age, sex, height, weight }
+  plan:       [],     // [{ name, category, sets, repsPerSet, restSeconds, level }]
+  planIndex:  -1,     // current exercise index in plan
+  setIndex:   0,      // current set (0-indexed)
+  setReps:    0,      // reps done in current set
+  restTimer:  null,   // rest countdown interval
+
+  poseDetector: null,
+  classifier:   null,
   customExercises: [],
 
   timerInterval: null,
   toastTimeout:  null
+};
+
+// ════════════════════════════════════════════════════════════════════════════
+// EXERCISE INFO – descriptions, tips, icons for demo screen
+// ════════════════════════════════════════════════════════════════════════════
+const EXERCISE_INFO = {
+  'Agachamento':            { icon:'🏋️', muscles:'Quadríceps, Glúteos, Isquiotibiais',   desc:'Pés na largura dos ombros levemente abertos. Desça como se fosse sentar em uma cadeira, mantendo o tronco ereto e os joelhos alinhados com os pés.',                                    tips:['Joelhos alinhados com os pés','Desça até 90°','Peso nos calcanhares'] },
+  'Polichinelo':            { icon:'⭐', muscles:'Cardio, Corpo Todo',                    desc:'Em pé com pés juntos. Salte abrindo os pés além dos ombros enquanto eleva os braços acima da cabeça. Retorne e repita.',                                                                tips:['Sincronize braços e pernas','Aterrisse suavemente','Ritmo constante'] },
+  'Flexão':                 { icon:'💪', muscles:'Peitoral, Tríceps, Ombros',             desc:'Mãos na largura dos ombros, corpo em linha reta. Desça o peito até quase tocar o chão e empurre de volta.',                                                                              tips:['Corpo reto como prancha','Cotovelos a 45° do corpo','Abdômen contraído'] },
+  'Avanço':                 { icon:'🦵', muscles:'Quadríceps, Glúteos, Isquiotibiais',   desc:'Dê um passo à frente. Desça até o joelho da frente atingir 90°. Volte à posição inicial e alterne as pernas.',                                                                          tips:['Tronco ereto','Joelho não passa dos pés','Empurre pelo calcanhar'] },
+  'Joelho Alto':            { icon:'🏃', muscles:'Cardio, Core, Quadríceps',              desc:'Em pé, eleve alternadamente os joelhos acima da linha do quadril em ritmo acelerado.',                                                                                                    tips:['Joelho acima do quadril','Mova os braços naturalmente','Abdômen contraído'] },
+  'Agachamento Sumô':       { icon:'🏋️', muscles:'Glúteos, Adutores, Quadríceps',        desc:'Pés muito afastados com pontas voltadas para fora (~45°). Desça mantendo tronco ereto e joelhos na direção dos pés.',                                                                    tips:['Joelhos seguem a direção dos pés','Ative os glúteos na subida','Tronco ereto'] },
+  'Agachamento Búlgaro':    { icon:'🏋️', muscles:'Quadríceps, Glúteos',                  desc:'Pé de trás elevado em banco. Desça o joelho traseiro em direção ao chão até 90° no joelho da frente.',                                                                                   tips:['Pé da frente bem à frente','Tronco ereto','Execute os dois lados'] },
+  'Cadeira Contra Parede':  { icon:'🪑', muscles:'Quadríceps, Glúteos',                  desc:'Costas na parede, desça até joelhos a 90° e segure a posição isométrica.',                                                                                                               tips:['Costas planas na parede','Joelhos sobre os tornozelos','Respire normalmente'] },
+  'Agachamento com Salto':  { icon:'🚀', muscles:'Quadríceps, Glúteos, Cardio',           desc:'Agachamento seguido de salto explosivo. Aterrisse suavemente e desça imediatamente.',                                                                                                    tips:['Aterrissagem com joelhos dobrados','Explosão na saída','Silêncio na aterrissagem'] },
+  'Agachamento Isométrico': { icon:'⏱️', muscles:'Quadríceps, Glúteos',                  desc:'Desça até joelhos a ~100° e segure a posição estática por alguns segundos.',                                                                                                             tips:['Posição estável','Respire regularmente','Não deixe os joelhos cair para dentro'] },
+  'Agachamento Plié':       { icon:'💃', muscles:'Glúteos, Adutores, Quadríceps',         desc:'Agachamento com pés bem abertos e pontas para fora. Ênfase nos adutores e glúteos.',                                                                                                    tips:['Joelhos para fora na descida','Tronco ereto','Contraia os glúteos na subida'] },
+  'Passada Lateral':        { icon:'↔️', muscles:'Glúteos, Adutores, Quadríceps',         desc:'Passo lateral largo com uma perna, flexionando esse joelho enquanto o outro fica estendido.',                                                                                            tips:['Pé de suporte completamente no chão','Tronco ereto','Alterne os lados'] },
+  'Afundo com Rotação':     { icon:'🔄', muscles:'Quadríceps, Oblíquos, Core',            desc:'Avanço com rotação do tronco para o lado da perna da frente no ponto mais baixo.',                                                                                                      tips:['Gire o tronco todo, não só os braços','Mantenha equilíbrio','Volte ao centro antes de subir'] },
+  'Afundo com Salto':       { icon:'🚀', muscles:'Quadríceps, Glúteos, Cardio',           desc:'Avanço com troca explosiva de perna no ar.',                                                                                                                                             tips:['Aterrisse suavemente','Tronco ereto','Alternância explosiva'] },
+  'Ponte de Glúteo':        { icon:'🌉', muscles:'Glúteos, Isquiotibiais, Core',          desc:'Deitado de costas, joelhos dobrados, pés no chão. Eleve o quadril contraindo os glúteos até linha reta com o tronco.',                                                                  tips:['Contraia os glúteos no topo','Segure 1–2 segundos','Pés paralelos e planos'] },
+  'Hip Thrust':             { icon:'💺', muscles:'Glúteos, Isquiotibiais',                desc:'Costas apoiadas em banco, quadril ao chão. Empurre o quadril para cima ativando os glúteos.',                                                                                            tips:['Pé plano no chão','Glúteo bem contraído no topo','Queixo para o peito'] },
+  'Donkey Kick':            { icon:'🦵', muscles:'Glúteos, Core',                         desc:'Em quatro apoios, chute uma perna para trás e para cima mantendo o joelho dobrado a 90°.',                                                                                              tips:['Quadril nivelado','Não torça o tronco','Contraia o glúteo no topo'] },
+  'Fire Hydrant':           { icon:'🚒', muscles:'Glúteo Médio, Core',                    desc:'Em quatro apoios, eleve lateralmente uma perna a 90° do corpo.',                                                                                                                         tips:['Quadril nivelado','Movimento no quadril, não na coluna','Controle a descida'] },
+  'Prancha':                { icon:'📐', muscles:'Core, Ombros, Glúteos',                 desc:'Apoiado nos antebraços e pontas dos pés. Corpo em linha reta paralelo ao chão. Segure a posição.',                                                                                      tips:['Não deixe o quadril cair','Abdômen fortemente contraído','Respire normalmente'] },
+  'Escalador':              { icon:'🧗', muscles:'Core, Ombros, Cardio',                  desc:'Em prancha nas mãos, traga alternadamente os joelhos em direção ao peito rapidamente.',                                                                                                  tips:['Quadril nivelado','Ritmo constante','Costas retas'] },
+  'Prancha Lateral':        { icon:'📐', muscles:'Oblíquos, Core',                        desc:'Apoiado em um antebraço, corpo em linha reta de lado. Segure a posição.',                                                                                                               tips:['Quadril elevado','Corpo em linha reta','Execute os dois lados'] },
+  'Prancha com Toque':      { icon:'✋', muscles:'Core, Ombros',                          desc:'Em prancha, toque alternadamente o ombro oposto com a mão.',                                                                                                                             tips:['Minimize o balanço do quadril','Core ativado','Movimento controlado'] },
+  'Prancha Dinâmica':       { icon:'🔄', muscles:'Core, Tríceps, Ombros',                 desc:'Alterne entre prancha nos antebraços e prancha nas mãos.',                                                                                                                              tips:['Quadril estável','Alterne o braço que inicia','Corpo alinhado'] },
+  'Crunch Abdominal':       { icon:'🎯', muscles:'Reto Abdominal',                        desc:'Deitado com joelhos dobrados. Eleve os ombros do chão contraindo o abdômen.',                                                                                                           tips:['Não puxe o pescoço','Olhe para o teto','Expire ao subir'] },
+  'Elevação de Pernas':     { icon:'🦵', muscles:'Abdômen Inferior, Hip Flexors',         desc:'Deitado de costas, pernas estendidas. Eleve-as até 90° e desça controlado.',                                                                                                            tips:['Lombar colada ao chão','Pernas retas','Desça lentamente'] },
+  'Bicicleta Abdominal':    { icon:'🚲', muscles:'Oblíquos, Reto Abdominal',              desc:'Deitado, pernas em pedalada alternada enquanto torce o tronco para cada lado.',                                                                                                         tips:['Cotovelo toca o joelho oposto','Gire o tronco todo','Ritmo controlado'] },
+  'Russian Twist':          { icon:'🔄', muscles:'Oblíquos, Core',                        desc:'Sentado com tronco inclinado e pés elevados. Gire o tronco de lado a lado.',                                                                                                            tips:['Pés elevados = mais difícil','Gire o tronco todo','Abdômen contraído'] },
+  'Superman':               { icon:'🦸', muscles:'Lombar, Glúteos, Posteriores',          desc:'Deitado de barriga para baixo, eleve braços e pernas simultaneamente.',                                                                                                                  tips:['Contraia glúteos e lombar','Segure 2s no topo','Movimento controlado'] },
+  'Sit-Up Completo':        { icon:'🎯', muscles:'Reto Abdominal, Flexores',              desc:'Deitado, suba o tronco completamente até ficar sentado.',                                                                                                                                tips:['Use o abdômen, não o impulso','Desça controlado','Joelhos dobrados'] },
+  'Desenvolvimento':        { icon:'💪', muscles:'Deltóides, Tríceps',                    desc:'Em pé, empurre os braços acima da cabeça a partir da altura dos ombros.',                                                                                                               tips:['Não arqueie as costas','Cotovelos à frente','Movimento controlado'] },
+  'Elevação Lateral':       { icon:'📐', muscles:'Deltóide Médio',                        desc:'Em pé, eleve os braços lateralmente até a altura dos ombros com cotovelos levemente dobrados.',                                                                                         tips:['Não use impulso','Controle a descida','Ombros longe das orelhas'] },
+  'Remada Curvada':         { icon:'🚣', muscles:'Dorsais, Bíceps, Romboides',            desc:'Inclinado para frente, costas retas. Puxe os cotovelos para trás e para cima.',                                                                                                        tips:['Costas retas','Cotovelos junto ao corpo','Aperte escápulas no topo'] },
+  'Stiff':                  { icon:'📏', muscles:'Isquiotibiais, Glúteos, Lombar',        desc:'Em pé, incline o tronco para frente mantendo pernas quase estendidas e costas retas.',                                                                                                  tips:['Empurre o quadril para trás','Costas retas sempre','Desça até sentir o alongamento'] },
+  'Boa Manhã':              { icon:'🌅', muscles:'Lombar, Isquiotibiais, Glúteos',        desc:'Mãos atrás da cabeça, incline o tronco para frente mantendo costas retas.',                                                                                                             tips:['Empurre o quadril para trás','Não arredonde a lombar','Movimento lento'] },
+  'Rosca Direta':           { icon:'💪', muscles:'Bíceps',                                desc:'Em pé, flexione os cotovelos elevando os antebraços até os ombros.',                                                                                                                    tips:['Cotovelos fixos junto ao corpo','Controle a descida','Punhos neutros'] },
+  'Rosca Alternada':        { icon:'💪', muscles:'Bíceps',                                desc:'Rosca alternando um braço por vez.',                                                                                                                                                    tips:['Cotovelo fixo','Complete cada lado','Controle a descida'] },
+  'Rosca Martelo':          { icon:'🔨', muscles:'Bíceps, Braquiorradial',                desc:'Rosca com punhos em posição neutra (como segurar um martelo).',                                                                                                                         tips:['Cotovelo fixo junto ao corpo','Punho neutro','Controle'] },
+  'Tríceps Testa':          { icon:'💪', muscles:'Tríceps',                               desc:'Deitado, braços estendidos acima. Dobre os cotovelos trazendo o peso para perto da testa.',                                                                                             tips:['Cotovelos apontam para o teto','Somente o cotovelo move','Controle a descida'] },
+  'Tríceps Banco':          { icon:'💺', muscles:'Tríceps',                               desc:'Apoiado em banco, desça o corpo dobrando os cotovelos.',                                                                                                                                tips:['Cotovelos apontam para trás','Não abra os cotovelos','Desça controlado'] },
+  'Crucifixo':              { icon:'✝️', muscles:'Peitoral, Deltóides',                   desc:'Deitado, braços abertos. Feche-os acima do peito como um abraço.',                                                                                                                      tips:['Cotovelos levemente dobrados','Abra até sentir o alongamento','Controle'] },
+  'Flexão de Joelho':       { icon:'💪', muscles:'Peitoral, Tríceps',                    desc:'Flexão com os joelhos apoiados no chão. Ideal para iniciantes.',                                                                                                                         tips:['Corpo reto do joelho à cabeça','Mãos na largura dos ombros','Peito quase no chão'] },
+  'Flexão Diamante':        { icon:'💎', muscles:'Tríceps, Peitoral Interno',             desc:'Mãos juntas formando triângulo. Foco no tríceps.',                                                                                                                                      tips:['Cotovelos fechados','Desça controlado','Tronco reto'] },
+  'Pike Push-Up':           { icon:'🔻', muscles:'Deltóides, Tríceps',                    desc:'Quadril bem elevado formando V invertido. Desça a cabeça entre os braços.',                                                                                                             tips:['Quadril bem alto','Cabeça vai entre os braços','Cotovelos levemente para fora'] },
+  'Burpee – Prancha':       { icon:'⚡', muscles:'Corpo Todo, Cardio',                    desc:'Agache, coloque mãos no chão, salte os pés para prancha, execute flexão, volte e salte.',                                                                                               tips:['Movimento fluido','Core ativo','Aterrisse suavemente'] },
+  'Pular Corda':            { icon:'🪢', muscles:'Panturrilha, Cardio',                   desc:'Pule com os pés juntos ou alternados, girando uma corda real ou imaginária.',                                                                                                            tips:['Aterrissagem na ponta dos pés','Joelhos levemente dobrados','Punhos fazem o giro'] },
+  'Skipping':               { icon:'🏃', muscles:'Cardio, Panturrilha',                   desc:'Corrida estacionária com elevação exagerada dos joelhos na ponta dos pés.',                                                                                                              tips:['Joelhos acima do quadril','Ponta dos pés','Ritmo constante'] },
+  'Star Jump':              { icon:'⭐', muscles:'Cardio, Corpo Todo',                    desc:'Salte com braços e pernas se abrindo em estrela.',                                                                                                                                       tips:['Aterrissagem suave','Explosão na saída','Controle na aterrissagem'] },
+  'Elevação de Panturrilha':{ icon:'🦶', muscles:'Gastrocnêmio, Sóleo',                  desc:'Em pé, eleve os calcanhares ficando na ponta dos pés.',                                                                                                                                  tips:['Extensão total no topo','Desça lentamente','Apoio se necessário'] },
+  'Step Up':                { icon:'⬆️', muscles:'Quadríceps, Glúteos',                   desc:'Suba em um degrau com uma perna por vez.',                                                                                                                                              tips:['Calcanhar totalmente no degrau','Suba devagar','Alterne as pernas'] },
+  'Hiperextensão':          { icon:'📏', muscles:'Lombar, Glúteos',                       desc:'Deitado de barriga para baixo, eleve o tronco contraindo a lombar.',                                                                                                                    tips:['Movimento controlado','Não hiperestenda demais','Mãos atrás da cabeça'] },
+  'Tesoura':                { icon:'✂️', muscles:'Abdômen Inferior',                      desc:'Deitado de costas, pernas levemente elevadas. Alterne-as verticalmente.',                                                                                                               tips:['Lombar colada ao chão','Pernas retas','Movimentos alternados'] },
 };
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -104,6 +169,472 @@ function calcDisplayLevel(totalReps, totalWorkouts) {
   if (totalReps < 50 || totalWorkouts < 3) return 'Iniciante';
   if (totalReps <= 150) return 'Intermediário';
   return 'Avançado';
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// PROFILE SCREEN
+// ════════════════════════════════════════════════════════════════════════════
+function showProfileScreen() {
+  showScreen('profile');
+  state.profile = { sex: '' };
+  $('profile-age').value    = '';
+  $('profile-height').value = '';
+  $('profile-weight').value = '';
+  document.querySelectorAll('.sex-btn').forEach(b => b.classList.remove('active'));
+  $('bmi-preview').style.display    = 'none';
+  $('btn-generate-plan').disabled   = true;
+}
+
+function onSexSelect(sex) {
+  state.profile.sex = sex;
+  document.querySelectorAll('.sex-btn').forEach(b => b.classList.remove('active'));
+  $('sex-btn-' + sex).classList.add('active');
+  updateProfileUI();
+}
+
+function updateProfileUI() {
+  const age    = parseInt($('profile-age').value)    || 0;
+  const height = parseInt($('profile-height').value) || 0;
+  const weight = parseFloat($('profile-weight').value) || 0;
+  const sex    = state.profile ? state.profile.sex : '';
+
+  if (height > 0 && weight > 0) {
+    const bmi = weight / ((height / 100) ** 2);
+    let label;
+    if      (bmi < 18.5) label = 'Abaixo do peso';
+    else if (bmi < 25)   label = 'Peso normal';
+    else if (bmi < 30)   label = 'Sobrepeso';
+    else                 label = 'Obesidade';
+    $('bmi-value').textContent         = bmi.toFixed(1);
+    $('fitness-level-preview').textContent = label;
+    $('bmi-preview').style.display     = 'flex';
+  } else {
+    $('bmi-preview').style.display = 'none';
+  }
+
+  const valid = age >= 14 && age <= 90 && height >= 120 && height <= 220
+             && weight >= 30 && weight <= 200 && sex;
+  $('btn-generate-plan').disabled = !valid;
+}
+
+async function submitProfile() {
+  const age    = parseInt($('profile-age').value);
+  const height = parseInt($('profile-height').value);
+  const weight = parseFloat($('profile-weight').value);
+  const sex    = state.profile ? state.profile.sex : '';
+
+  if (!age || !height || !weight || !sex) {
+    showToast('Preencha todos os campos.', 'error');
+    return;
+  }
+
+  state.profile = { age, sex, height, weight };
+
+  const customExercises = state.customExercises || [];
+  state.plan      = generateWorkoutPlan(state.profile, customExercises);
+  state.planIndex = -1;
+  state.setIndex  = 0;
+  state.setReps   = 0;
+
+  if (!state.plan.length) {
+    showToast('Não foi possível gerar o treino. Tente novamente.', 'error');
+    return;
+  }
+
+  advanceToNextExercise();
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// WORKOUT PLAN GENERATOR
+// ════════════════════════════════════════════════════════════════════════════
+function generateWorkoutPlan(profile, customExercises) {
+  const bmi = profile.weight / ((profile.height / 100) ** 2);
+
+  let sets, repsPerSet, restSeconds, level;
+  if (profile.age > 60 || bmi > 33) {
+    level = 'Iniciante';    sets = 2; repsPerSet = 10; restSeconds = 90;
+  } else if (profile.age > 45 || bmi > 27) {
+    level = 'Intermediário'; sets = 3; repsPerSet = 12; restSeconds = 60;
+  } else {
+    level = 'Avançado';     sets = 3; repsPerSet = 15; restSeconds = 45;
+  }
+
+  // Built-in exercises with categories
+  const BUILTIN = [
+    { name: 'Agachamento', category: 'Pernas'  },
+    { name: 'Polichinelo',  category: 'Cardio'  },
+    { name: 'Flexão',       category: 'Peito'   },
+    { name: 'Avanço',       category: 'Pernas'  },
+    { name: 'Joelho Alto',  category: 'Cardio'  },
+  ];
+
+  const pool = [
+    ...BUILTIN,
+    ...customExercises.map(e => ({ name: e.name, category: e.category || 'Geral' }))
+  ];
+
+  const used = new Set();
+  function pick(arr) {
+    const avail = arr.filter(e => !used.has(e.name));
+    if (!avail.length) return null;
+    const ex = avail[Math.floor(Math.random() * avail.length)];
+    used.add(ex.name);
+    return ex;
+  }
+
+  const cardio = pool.filter(e => e.category === 'Cardio');
+  const legs   = pool.filter(e => ['Pernas','Agachamento','Afundo'].includes(e.category));
+  const upper  = pool.filter(e => ['Peito','Ombro','Bíceps','Tríceps','Costas','Flexão'].includes(e.category));
+  const core   = pool.filter(e => ['Abdômen','Prancha'].includes(e.category));
+  const glutes = pool.filter(e => e.category === 'Glúteo');
+
+  const selected = [];
+
+  // Warm-up cardio
+  const warmup = pick(cardio);
+  if (warmup) selected.push(warmup);
+
+  // Legs (more for women)
+  const legCount = profile.sex === 'F' ? 2 : 1;
+  for (let i = 0; i < legCount; i++) { const e = pick(legs); if (e) selected.push(e); }
+
+  // Core
+  const c = pick(core);
+  if (c) selected.push(c);
+
+  // Upper body (more for men)
+  const upperCount = profile.sex === 'M' ? 2 : 1;
+  for (let i = 0; i < upperCount; i++) { const e = pick(upper); if (e) selected.push(e); }
+
+  // Glute focus for women
+  if (profile.sex === 'F') { const g = pick(glutes) || pick(legs); if (g) selected.push(g); }
+
+  // Finish cardio
+  const finish = pick(cardio);
+  if (finish) selected.push(finish);
+
+  // Guarantee at least 4 exercises
+  while (selected.length < 4) {
+    const e = pick(pool);
+    if (!e) break;
+    selected.push(e);
+  }
+
+  return selected.map(ex => ({ name: ex.name, category: ex.category, sets, repsPerSet, restSeconds, level }));
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// DEMO SCREEN
+// ════════════════════════════════════════════════════════════════════════════
+function showExerciseDemo() {
+  const item = state.plan[state.planIndex];
+  const info = EXERCISE_INFO[item.name] || {
+    icon: '🏋️',
+    muscles: item.category || '—',
+    desc: `Execute o exercício ${item.name} com postura correta e movimento controlado.`,
+    tips: ['Foco na postura', 'Movimento controlado', 'Respire regularmente']
+  };
+
+  $('demo-ex-num').textContent    = state.planIndex + 1;
+  $('demo-ex-total').textContent  = state.plan.length;
+  $('demo-icon').textContent      = info.icon;
+  $('demo-name').textContent      = item.name;
+  $('demo-muscles').textContent   = info.muscles;
+  $('demo-description').textContent = info.desc;
+  $('demo-sets').textContent      = item.sets;
+  $('demo-reps').textContent      = item.repsPerSet;
+  $('demo-level').textContent     = item.level;
+
+  const tipsList = $('demo-tips');
+  tipsList.innerHTML = '';
+  info.tips.forEach(tip => {
+    const li = document.createElement('li');
+    li.textContent = tip;
+    tipsList.appendChild(li);
+  });
+
+  $('demo-countdown').style.display    = 'none';
+  $('btn-demo-start').style.display    = 'inline-flex';
+  $('btn-demo-skip').style.display     = state.planIndex < state.plan.length - 1 ? 'inline-flex' : 'none';
+
+  showScreen('demo');
+}
+
+async function startGuidedExercise() {
+  $('btn-demo-start').style.display = 'none';
+  $('btn-demo-skip').style.display  = 'none';
+
+  // Countdown 3 2 1
+  const cd = $('demo-countdown');
+  cd.style.display = 'block';
+  for (let i = 3; i > 0; i--) {
+    $('demo-count-num').textContent = i;
+    await new Promise(r => setTimeout(r, 1000));
+  }
+  cd.style.display = 'none';
+
+  showScreen('workout');
+
+  if (!state.workout.active) {
+    await initGuidedWorkout();
+  } else {
+    switchGuidedExercise();
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// GUIDED WORKOUT ENGINE
+// ════════════════════════════════════════════════════════════════════════════
+async function initGuidedWorkout() {
+  if (!window.ExerciseClassifier || !window.PoseDetector) {
+    showToast('Módulos não carregados. Verifique a internet e recarregue.', 'error', 6000);
+    return;
+  }
+
+  const item = state.plan[state.planIndex];
+
+  state.workout = {
+    active: false, startTime: null,
+    exercises: {}, currentExercise: item.name,
+    totalScore: 0, lastRepCount: 0
+  };
+  state.setReps = 0;
+
+  state.classifier = new window.ExerciseClassifier();
+  state.classifier.setCustomExercises(state.customExercises);
+  state.classifier.setExpectedExercise(item.name);
+
+  updateGuidedPanel();
+  setFeedback(['Inicializando câmera…']);
+  $('camera-status').textContent = 'Inicializando câmera…';
+
+  if (state.poseDetector) { state.poseDetector.stop(); state.poseDetector = null; }
+
+  state.poseDetector = await initPose('workout-video', 'workout-canvas', onGuidedPoseResults);
+  if (!state.poseDetector) return;
+
+  state.workout.active    = true;
+  state.workout.startTime = Date.now();
+  $('camera-status').textContent = 'Câmera ativa – posicione-se em frente';
+
+  clearInterval(state.timerInterval);
+  state.timerInterval = setInterval(() => {
+    if (!state.workout.active) return;
+    const elapsed = Math.floor((Date.now() - state.workout.startTime) / 1000);
+    const m = Math.floor(elapsed / 60).toString().padStart(2, '0');
+    const s = (elapsed % 60).toString().padStart(2, '0');
+    $('timer').textContent = `${m}:${s}`;
+  }, 1000);
+}
+
+function switchGuidedExercise() {
+  const item = state.plan[state.planIndex];
+  state.setReps = 0;
+  if (state.classifier) state.classifier.setExpectedExercise(item.name);
+  updateGuidedPanel();
+  setFeedback([`Execute: ${item.name}`]);
+}
+
+function updateGuidedPanel() {
+  const item = state.plan[state.planIndex];
+  const info = EXERCISE_INFO[item.name] || {};
+
+  $('exercise-name').textContent   = item.name;
+  $('rep-count').textContent       = state.setReps;
+  $('workout-score').textContent   = state.workout.totalScore || 0;
+  $('quality-bar').style.width     = '0%';
+  $('quality-value').textContent   = '—';
+
+  $('plan-progress').style.display = 'flex';
+  $('plan-ex-label').textContent   = `Exercício ${state.planIndex + 1} / ${state.plan.length}`;
+  $('plan-set-label').textContent  = `Série ${state.setIndex + 1} / ${item.sets}`;
+  $('plan-rep-goal').textContent   = `Meta: ${item.repsPerSet} reps`;
+  $('plan-ex-icon').textContent    = info.icon || '🏋️';
+}
+
+function onGuidedPoseResults(results) {
+  if (!state.workout.active || !state.classifier) return;
+
+  const landmarks = results.poseLandmarks;
+  const info = $('landmark-info');
+  if (info) {
+    info.textContent = landmarks
+      ? `${landmarks.filter(l => l.visibility > 0.5).length}/33 pontos`
+      : '';
+  }
+
+  if (!landmarks) {
+    setFeedback(['Posicione-se em frente à câmera e garanta boa iluminação.']);
+    return;
+  }
+
+  const cl = state.classifier.update(landmarks);
+  const { repCompleted, quality, feedback, pointsEarned } = cl;
+
+  // Quality bar (always updating)
+  if (quality !== undefined && quality !== null) {
+    const pct = Math.round(quality * 100);
+    $('quality-bar').style.width             = `${pct}%`;
+    $('quality-value').textContent           = `${pct}%`;
+    $('quality-bar').style.backgroundPosition = `${100 - pct}% center`;
+  }
+
+  if (feedback && feedback.length) setFeedback(feedback);
+
+  if (repCompleted) onGuidedRep(quality, pointsEarned);
+}
+
+function onGuidedRep(quality, pointsEarned) {
+  const item = state.plan[state.planIndex];
+  const exName = item.name;
+
+  state.setReps++;
+  state.workout.totalScore += pointsEarned || 0;
+  $('workout-score').textContent = state.workout.totalScore;
+
+  if (!state.workout.exercises[exName]) {
+    state.workout.exercises[exName] = {
+      name: exName, type: 'guided', reps: 0,
+      qualityScores: [], issues: new Set(), score: 0
+    };
+  }
+  state.workout.exercises[exName].reps++;
+  state.workout.exercises[exName].qualityScores.push(quality);
+  state.workout.exercises[exName].score += pointsEarned || 0;
+
+  const repEl = $('rep-count');
+  repEl.textContent = state.setReps;
+  repEl.classList.remove('bump');
+  void repEl.offsetWidth;
+  repEl.classList.add('bump');
+  setTimeout(() => repEl.classList.remove('bump'), 300);
+
+  $('plan-rep-goal').textContent = `${state.setReps} / ${item.repsPerSet}`;
+
+  if (state.setReps >= item.repsPerSet) completeSet();
+}
+
+function completeSet() {
+  clearInterval(state.restTimer);
+  const item = state.plan[state.planIndex];
+  state.setIndex++;
+
+  if (state.setIndex >= item.sets) {
+    showToast(`${item.name} concluído! 💪`, 'success', 2000);
+    setTimeout(() => advanceToNextExercise(), 1800);
+  } else {
+    const remaining = item.sets - state.setIndex;
+    startRestCountdown(
+      item.restSeconds,
+      `${remaining} série${remaining !== 1 ? 's' : ''} de ${item.name} restante${remaining !== 1 ? 's' : ''}`
+    );
+  }
+}
+
+function startRestCountdown(seconds, label) {
+  const overlay = $('rest-overlay');
+  overlay.style.display    = 'flex';
+  $('rest-next-label').textContent = label;
+  $('rest-countdown').textContent  = seconds;
+
+  let remaining = seconds;
+  clearInterval(state.restTimer);
+  state.restTimer = setInterval(() => {
+    remaining--;
+    $('rest-countdown').textContent = remaining;
+    if (remaining <= 0) {
+      clearInterval(state.restTimer);
+      endRest();
+    }
+  }, 1000);
+}
+
+function endRest() {
+  $('rest-overlay').style.display = 'none';
+  state.setReps = 0;
+  const item = state.plan[state.planIndex];
+  $('plan-set-label').textContent = `Série ${state.setIndex + 1} / ${item.sets}`;
+  $('plan-rep-goal').textContent  = `Meta: ${item.repsPerSet} reps`;
+  $('rep-count').textContent      = 0;
+  setFeedback([`Série ${state.setIndex + 1} — pode começar!`]);
+}
+
+function advanceToNextExercise() {
+  state.planIndex++;
+  state.setIndex = 0;
+  state.setReps  = 0;
+
+  if (state.planIndex >= state.plan.length) {
+    endGuidedWorkout();
+    return;
+  }
+
+  showExerciseDemo();
+}
+
+function skipExercise() {
+  showToast('Exercício pulado.', 'info', 1500);
+  advanceToNextExercise();
+}
+
+async function endGuidedWorkout() {
+  state.workout.active = false;
+  clearInterval(state.timerInterval);
+  clearInterval(state.restTimer);
+  $('rest-overlay').style.display = 'none';
+
+  if (state.poseDetector) { state.poseDetector.stop(); state.poseDetector = null; }
+
+  const duration = state.workout.startTime
+    ? Math.floor((Date.now() - state.workout.startTime) / 1000)
+    : 0;
+
+  const exercisesForReport = {};
+  for (const [name, ex] of Object.entries(state.workout.exercises)) {
+    exercisesForReport[name] = { ...ex, issues: Array.from(ex.issues || new Set()) };
+  }
+
+  const stats     = getLocalStats();
+  const totalReps = Object.values(exercisesForReport).reduce((s, e) => s + e.reps, 0);
+
+  const workoutData = {
+    duration,
+    exercises:        exercisesForReport,
+    totalScore:       state.workout.totalScore,
+    totalWorkouts:    stats.totalWorkouts + 1,
+    totalAllTimeReps: stats.totalReps,
+    createdAt:        new Date().toISOString()
+  };
+
+  const report = _generateReport(workoutData);
+
+  saveLocalStats({
+    totalWorkouts: stats.totalWorkouts + 1,
+    totalReps:     stats.totalReps + totalReps,
+    totalScore:    stats.totalScore + state.workout.totalScore
+  });
+
+  try {
+    await _saveWorkout({ ...workoutData, report: { summary: report.summary, totalScore: report.totalScore, totalReps: report.totalReps, level: report.level } });
+  } catch (err) {
+    console.warn('[FitAI] Erro ao salvar treino:', err);
+  }
+
+  renderReport(report, duration);
+  showScreen('report');
+  updateHomeStats();
+  setTimeout(() => animateScoreCircle(report.totalScore), 100);
+}
+
+function abandonWorkout() {
+  if (!confirm('Abandonar o treino? O progresso atual será perdido.')) return;
+  clearInterval(state.timerInterval);
+  clearInterval(state.restTimer);
+  state.workout.active = false;
+  if (state.poseDetector) { state.poseDetector.stop(); state.poseDetector = null; }
+  $('rest-overlay').style.display  = 'none';
+  $('plan-progress').style.display = 'none';
+  showScreen('home');
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -278,15 +809,15 @@ function updateWorkoutUI(classification) {
     $('workout-score').textContent = state.workout.totalScore;
   }
 
-  // Quality bar
-  if (quality !== undefined && quality !== null) {
+  // Quality bar – only when an exercise is actively detected
+  if (exercise && quality !== undefined && quality !== null) {
     const pct = Math.round(quality * 100);
-    $('quality-bar').style.width   = `${pct}%`;
-    $('quality-value').textContent = `${pct}%`;
-
-    // Shift background-position for gradient effect
-    const pos = 100 - pct; // green at 100%, red at 0%
-    $('quality-bar').style.backgroundPosition = `${pos}% center`;
+    $('quality-bar').style.width             = `${pct}%`;
+    $('quality-value').textContent           = `${pct}%`;
+    $('quality-bar').style.backgroundPosition = `${100 - pct}% center`;
+  } else if (!exercise) {
+    $('quality-bar').style.width   = '0%';
+    $('quality-value').textContent = '—';
   }
 
   // Feedback
@@ -781,19 +1312,27 @@ function init() {
   showScreen('home');
 
   // Home
-  _on('btn-start-workout',    'click', startWorkout);
-  _on('btn-record-new-home',  'click', openRecordScreen);
-  _on('btn-history',          'click', loadHistory);
+  _on('btn-start-workout',   'click', showProfileScreen);
+  _on('btn-record-new-home', 'click', openRecordScreen);
+  _on('btn-history',         'click', loadHistory);
 
-  // Workout
-  _on('btn-end-workout', 'click', () => {
-    if (state.workout.active) {
-      endWorkout();
-    } else {
-      if (state.poseDetector) { state.poseDetector.stop(); state.poseDetector = null; }
-      showScreen('home');
-    }
-  });
+  // Profile screen
+  _on('btn-generate-plan', 'click', submitProfile);
+  _on('btn-back-profile',  'click', () => showScreen('home'));
+  _on('sex-btn-M', 'click', () => onSexSelect('M'));
+  _on('sex-btn-F', 'click', () => onSexSelect('F'));
+  _on('profile-age',    'input', updateProfileUI);
+  _on('profile-height', 'input', updateProfileUI);
+  _on('profile-weight', 'input', updateProfileUI);
+
+  // Demo screen
+  _on('btn-demo-start', 'click', startGuidedExercise);
+  _on('btn-demo-skip',  'click', skipExercise);
+
+  // Workout (guided)
+  _on('btn-abandon-workout', 'click', abandonWorkout);
+  _on('btn-skip-set',        'click', completeSet);
+  _on('btn-skip-rest',       'click', () => { clearInterval(state.restTimer); endRest(); });
   _on('btn-record-new-workout', 'click', openRecordScreen);
 
   // Record

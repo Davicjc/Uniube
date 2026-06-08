@@ -1,41 +1,40 @@
 /**
  * config.js – Firebase configuration and Firestore helpers.
- *
  * Uses Firebase Compat SDK (loaded as a regular <script> tag).
- * IMPORTANT: Replace the placeholder values with your Firebase project config.
- * Get them from: https://console.firebase.google.com → Project Settings → Your apps
  */
 
-// ── Firebase project config ──────────────────────────────────────────────────
-// IMPORTANT: Replace these values with your Firebase project config
 const firebaseConfig = {
-  apiKey: "AIzaSyDee2kBiZejJfkH6j5o73zgP3VtTclZXD8",
-  authDomain: "faculdade-368a4.firebaseapp.com",
-  projectId: "faculdade-368a4",
-  storageBucket: "faculdade-368a4.firebasestorage.app",
+  apiKey:            "AIzaSyDee2kBiZejJfkH6j5o73zgP3VtTclZXD8",
+  authDomain:        "faculdade-368a4.firebaseapp.com",
+  projectId:         "faculdade-368a4",
+  storageBucket:     "faculdade-368a4.firebasestorage.app",
   messagingSenderId: "557880487167",
-  appId: "1:557880487167:web:1209cb3d662186e85ff0ca"
+  appId:             "1:557880487167:web:1209cb3d662186e85ff0ca"
 };
 
-// ── Detect placeholder config ─────────────────────────────────────────────────
 const IS_PLACEHOLDER = firebaseConfig.apiKey === 'YOUR_API_KEY';
 
-let _db = null;
+let _db        = null;
+let _auth      = null;
+let _authReady = null; // Promise that resolves when anonymous sign-in is done
 
 if (!IS_PLACEHOLDER) {
   try {
     firebase.initializeApp(firebaseConfig);
-    _db = firebase.firestore();
-    console.info('[FitAI] Firebase conectado com sucesso.');
+    _db   = firebase.firestore();
+    _auth = firebase.auth();
+
+    // Sign in anonymously so security rules (request.auth != null) pass
+    _authReady = _auth.signInAnonymously()
+      .then(() => console.info('[FitAI] Auth anônimo OK, uid:', _auth.currentUser.uid))
+      .catch(err => console.warn('[FitAI] Auth anônimo falhou:', err.message));
+
+    console.info('[FitAI] Firebase conectado.');
   } catch (err) {
     console.warn('[FitAI] Erro ao conectar ao Firebase:', err.message);
   }
 } else {
-  console.warn(
-    '[FitAI] Firebase não configurado. ' +
-    'Edite js/config.js com suas credenciais para sincronizar na nuvem. ' +
-    'O app funcionará com localStorage por enquanto.'
-  );
+  console.warn('[FitAI] Firebase não configurado – usando localStorage.');
 }
 
 // ── localStorage fallback helpers ─────────────────────────────────────────────
@@ -46,11 +45,23 @@ function _lsSet(key, value) {
   try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* quota */ }
 }
 
+// ── Aguarda auth estar pronta e retorna o uid atual ───────────────────────────
+async function _uid() {
+  if (!_auth) return null;
+  if (_authReady) await _authReady;
+  return _auth.currentUser ? _auth.currentUser.uid : null;
+}
+
 // ── saveWorkout ───────────────────────────────────────────────────────────────
 async function saveWorkout(workoutData) {
-  const payload = { ...workoutData, createdAt: workoutData.createdAt || new Date().toISOString() };
+  const userId  = await _uid();
+  const payload = {
+    ...workoutData,
+    userId,
+    createdAt: workoutData.createdAt || new Date().toISOString()
+  };
 
-  if (_db) {
+  if (_db && userId) {
     try {
       const ref = await _db.collection('workouts').add({
         ...payload,
@@ -64,7 +75,7 @@ async function saveWorkout(workoutData) {
   }
 
   const list = _lsGet('fitai_workouts') || [];
-  const id = 'local_' + Date.now();
+  const id   = 'local_' + Date.now();
   list.unshift({ id, ...payload });
   _lsSet('fitai_workouts', list.slice(0, 100));
   return id;
@@ -72,9 +83,12 @@ async function saveWorkout(workoutData) {
 
 // ── getWorkouts ───────────────────────────────────────────────────────────────
 async function getWorkouts() {
-  if (_db) {
+  const userId = await _uid();
+
+  if (_db && userId) {
     try {
       const snap = await _db.collection('workouts')
+        .where('userId', '==', userId)
         .orderBy('serverTimestamp', 'desc')
         .limit(50)
         .get();
@@ -88,9 +102,14 @@ async function getWorkouts() {
 
 // ── saveCustomExercise ────────────────────────────────────────────────────────
 async function saveCustomExercise(exercise) {
-  const payload = { ...exercise, createdAt: exercise.createdAt || new Date().toISOString() };
+  const userId  = await _uid();
+  const payload = {
+    ...exercise,
+    createdBy: userId,
+    createdAt: exercise.createdAt || new Date().toISOString()
+  };
 
-  if (_db) {
+  if (_db && userId) {
     try {
       const ref = await _db.collection('exercises').add({
         ...payload,
@@ -104,7 +123,7 @@ async function saveCustomExercise(exercise) {
   }
 
   const list = _lsGet('fitai_exercises') || [];
-  const id = 'local_' + Date.now();
+  const id   = 'local_' + Date.now();
   list.push({ id, ...payload });
   _lsSet('fitai_exercises', list);
   return id;
@@ -112,7 +131,9 @@ async function saveCustomExercise(exercise) {
 
 // ── getCustomExercises ────────────────────────────────────────────────────────
 async function getCustomExercises() {
-  if (_db) {
+  const userId = await _uid();
+
+  if (_db && userId) {
     try {
       const snap = await _db.collection('exercises')
         .orderBy('serverTimestamp', 'desc')
@@ -127,7 +148,9 @@ async function getCustomExercises() {
 
 // ── deleteCustomExercise ──────────────────────────────────────────────────────
 async function deleteCustomExercise(id) {
-  if (_db && !id.startsWith('local_')) {
+  const userId = await _uid();
+
+  if (_db && userId && !id.startsWith('local_')) {
     try {
       await _db.collection('exercises').doc(id).delete();
       return;
@@ -146,5 +169,6 @@ window.FitAIConfig = {
   getWorkouts,
   saveCustomExercise,
   getCustomExercises,
-  deleteCustomExercise
+  deleteCustomExercise,
+  getUid: _uid
 };

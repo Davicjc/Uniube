@@ -5,7 +5,12 @@
       "Bash(python3 *)",
       "Bash(grep -n \"\\\\$\\(\" /c/Users/davic/Desktop/teste/js/app.js)",
       "Bash(start *)",
-      "Bash(python gerar_pdf.py)"
+      "Bash(python gerar_pdf.py)",
+      "Bash(curl -s \"https://firestore.googleapis.com/v1/projects/faculdade-368a4/databases/\\(default\\)/documents/workouts?key=AIzaSyDee2kBiZejJfkH6j5o73zgP3VtTclZXD8\")",
+      "Bash(firebase --version)",
+      "Bash(npm list *)",
+      "Bash(curl *)",
+      "Bash(node *)"
     ]
   }
 }

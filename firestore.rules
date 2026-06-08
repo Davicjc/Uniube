@@ -1,0 +1,32 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Exercícios – biblioteca compartilhada (leitura para todos auth, incluindo anônimo)
+    match /exercises/{exerciseId} {
+      allow read: if request.auth != null;
+
+      allow create: if request.auth != null
+                    && request.resource.data.name is string
+                    && request.resource.data.name.size() > 0
+                    && request.resource.data.name.size() <= 100
+                    && request.resource.data.keys().hasAll(['name', 'angleTemplate', 'createdAt']);
+
+      allow update, delete: if request.auth != null
+                             && resource.data.createdBy == request.auth.uid;
+    }
+
+    // Treinos – privados por usuário anônimo (uid persistido no dispositivo)
+    match /workouts/{workoutId} {
+      allow read, delete: if request.auth != null
+                          && resource.data.userId == request.auth.uid;
+
+      allow create: if request.auth != null
+                    && request.resource.data.userId == request.auth.uid;
+
+      allow update: if request.auth != null
+                    && resource.data.userId == request.auth.uid
+                    && request.resource.data.userId == request.auth.uid;
+    }
+  }
+}

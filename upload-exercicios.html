@@ -1,0 +1,751 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FitAI – Upload em Massa de Exercícios</title>
+
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:         #0a0a0f;
+      --surface:    #12121a;
+      --surface2:   #1a1a26;
+      --border:     #2a2a3a;
+      --green:      #00ff88;
+      --green-dim:  #00cc6a;
+      --text:       #e8e8f0;
+      --text-muted: #888899;
+      --danger:     #ff4455;
+      --warn:       #ffd600;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      min-height: 100vh;
+      padding: 24px 16px 60px;
+    }
+
+    h1 { font-size: 26px; color: var(--green); margin-bottom: 6px; }
+    .subtitle { color: var(--text-muted); font-size: 14px; margin-bottom: 28px; }
+
+    /* ── Toolbar ── */
+    .toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+      margin-bottom: 20px;
+    }
+    .toolbar span { color: var(--text-muted); font-size: 13px; margin-left: auto; }
+
+    button {
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 600;
+      padding: 10px 18px;
+      transition: opacity .15s, transform .1s;
+    }
+    button:hover { opacity: .88; }
+    button:active { transform: scale(.97); }
+    button:disabled { opacity: .35; cursor: not-allowed; transform: none; }
+
+    .btn-green  { background: var(--green);  color: #000; }
+    .btn-dimmer { background: var(--surface2); color: var(--text); border: 1px solid var(--border); }
+    .btn-danger { background: var(--danger);  color: #fff; }
+
+    /* ── Progress ── */
+    .progress-bar-wrap {
+      background: var(--surface2);
+      border-radius: 6px;
+      height: 8px;
+      overflow: hidden;
+      margin-bottom: 8px;
+      display: none;
+    }
+    .progress-bar-fill {
+      height: 100%;
+      background: var(--green);
+      width: 0%;
+      transition: width .3s;
+    }
+    .progress-text { font-size: 13px; color: var(--text-muted); min-height: 18px; }
+
+    /* ── Grid ── */
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 14px;
+      margin-top: 16px;
+    }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 14px 16px;
+      cursor: pointer;
+      transition: border-color .15s, background .15s;
+      position: relative;
+      user-select: none;
+    }
+    .card:hover { border-color: #444460; }
+    .card.selected {
+      border-color: var(--green);
+      background: rgba(0,255,136,.06);
+    }
+    .card.done {
+      border-color: var(--green-dim);
+      background: rgba(0,204,106,.1);
+    }
+    .card.done::after {
+      content: '✓';
+      position: absolute;
+      top: 10px; right: 12px;
+      color: var(--green);
+      font-size: 18px;
+      font-weight: 700;
+    }
+    .card.error {
+      border-color: var(--danger);
+      background: rgba(255,68,85,.08);
+    }
+
+    .card-name {
+      font-size: 15px;
+      font-weight: 700;
+      color: var(--text);
+      margin-bottom: 4px;
+    }
+    .card-category {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: .6px;
+      color: var(--text-muted);
+      margin-bottom: 8px;
+    }
+    .card-angles {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+    }
+    .angle-chip {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      font-size: 10px;
+      padding: 2px 6px;
+      color: var(--text-muted);
+      font-family: monospace;
+    }
+    .angle-chip span { color: var(--green); font-weight: 700; }
+
+    /* ── Log ── */
+    .log {
+      margin-top: 24px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 14px;
+      max-height: 200px;
+      overflow-y: auto;
+      font-family: monospace;
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+    .log-line { margin-bottom: 3px; }
+    .log-ok   { color: var(--green); }
+    .log-err  { color: var(--danger); }
+    .log-info { color: var(--warn); }
+  </style>
+</head>
+<body>
+
+<h1>Upload em Massa — Exercícios FitAI</h1>
+<p class="subtitle">Selecione os exercícios e clique em "Enviar para Firebase".</p>
+<div id="auth-status" style="
+  display:inline-flex; align-items:center; gap:8px;
+  background:#1a1a26; border:1px solid #2a2a3a;
+  border-radius:8px; padding:8px 14px; margin-bottom:20px; font-size:13px;
+">
+  <span id="auth-dot" style="width:10px;height:10px;border-radius:50%;background:#ffd600;display:inline-block;"></span>
+  <span id="auth-label">Conectando ao Firebase…</span>
+</div>
+
+<div class="toolbar">
+  <button class="btn-green" id="btn-upload">▲ Enviar Selecionados para Firebase</button>
+  <button class="btn-dimmer" id="btn-select-all">Selecionar Tudo</button>
+  <button class="btn-dimmer" id="btn-deselect-all">Desmarcar Tudo</button>
+  <button class="btn-danger" id="btn-clear-db">Limpar Coleção</button>
+  <span id="sel-count">0 selecionados</span>
+</div>
+
+<div class="progress-bar-wrap" id="progress-wrap">
+  <div class="progress-bar-fill" id="progress-fill"></div>
+</div>
+<div class="progress-text" id="progress-text"></div>
+
+<div class="grid" id="grid"></div>
+
+<div class="log" id="log"><div class="log-line log-info">Aguardando ação…</div></div>
+
+<!-- ──────────────────────────────────────────────── -->
+<script src="js/config.js"></script>
+<script>
+// ════════════════════════════════════════════════════════════════════════════
+// EXERCÍCIOS – ângulos na posição CARACTERÍSTICA do exercício (graus)
+// Chaves usadas para matching: leftKnee, rightKnee, leftHip, rightHip,
+//                               leftElbow, rightElbow
+// ════════════════════════════════════════════════════════════════════════════
+const EXERCISES = [
+  // ─── AGACHAMENTOS ────────────────────────────────────────────────────────
+  {
+    name: 'Agachamento Sumô',
+    category: 'Agachamento',
+    angleTemplate: { leftKnee:85,  rightKnee:85,  leftHip:78,  rightHip:78,  leftElbow:165, rightElbow:165 }
+  },
+  {
+    name: 'Agachamento Búlgaro',
+    category: 'Agachamento',
+    angleTemplate: { leftKnee:90,  rightKnee:142, leftHip:95,  rightHip:158, leftElbow:165, rightElbow:165 }
+  },
+  {
+    name: 'Agachamento Frontal',
+    category: 'Agachamento',
+    angleTemplate: { leftKnee:88,  rightKnee:88,  leftHip:90,  rightHip:90,  leftElbow:120, rightElbow:120 }
+  },
+  {
+    name: 'Agachamento Overhead',
+    category: 'Agachamento',
+    angleTemplate: { leftKnee:90,  rightKnee:90,  leftHip:92,  rightHip:92,  leftElbow:168, rightElbow:168 }
+  },
+  {
+    name: 'Agachamento Isométrico',
+    category: 'Agachamento',
+    angleTemplate: { leftKnee:100, rightKnee:100, leftHip:102, rightHip:102, leftElbow:165, rightElbow:165 }
+  },
+  {
+    name: 'Agachamento com Salto',
+    category: 'Agachamento',
+    angleTemplate: { leftKnee:82,  rightKnee:82,  leftHip:88,  rightHip:88,  leftElbow:72,  rightElbow:72  }
+  },
+  {
+    name: 'Agachamento com Rotação',
+    category: 'Agachamento',
+    angleTemplate: { leftKnee:90,  rightKnee:90,  leftHip:92,  rightHip:92,  leftElbow:48,  rightElbow:48  }
+  },
+  {
+    name: 'Agachamento Plié',
+    category: 'Agachamento',
+    angleTemplate: { leftKnee:90,  rightKnee:90,  leftHip:70,  rightHip:70,  leftElbow:165, rightElbow:165 }
+  },
+  {
+    name: 'Pistol Squat',
+    category: 'Agachamento',
+    angleTemplate: { leftKnee:88,  rightKnee:175, leftHip:90,  rightHip:165, leftElbow:100, rightElbow:100 }
+  },
+  {
+    name: 'Cadeira Contra Parede',
+    category: 'Agachamento',
+    angleTemplate: { leftKnee:90,  rightKnee:90,  leftHip:90,  rightHip:90,  leftElbow:165, rightElbow:165 }
+  },
+  {
+    name: 'Cadeira Unilateral',
+    category: 'Agachamento',
+    angleTemplate: { leftKnee:90,  rightKnee:172, leftHip:90,  rightHip:172, leftElbow:165, rightElbow:165 }
+  },
+  {
+    name: 'Surfer Squat',
+    category: 'Agachamento',
+    angleTemplate: { leftKnee:125, rightKnee:125, leftHip:120, rightHip:120, leftElbow:140, rightElbow:140 }
+  },
+
+  // ─── AFUNDOS / ESTOCADAS ─────────────────────────────────────────────────
+  {
+    name: 'Passada Lateral',
+    category: 'Afundo',
+    angleTemplate: { leftKnee:88,  rightKnee:170, leftHip:92,  rightHip:175, leftElbow:165, rightElbow:165 }
+  },
+  {
+    name: 'Afundo com Rotação',
+    category: 'Afundo',
+    angleTemplate: { leftKnee:90,  rightKnee:148, leftHip:95,  rightHip:155, leftElbow:60,  rightElbow:60  }
+  },
+  {
+    name: 'Afundo com Joelho Alto',
+    category: 'Afundo',
+    angleTemplate: { leftKnee:90,  rightKnee:150, leftHip:92,  rightHip:155, leftElbow:80,  rightElbow:80  }
+  },
+  {
+    name: 'Crossover Lunge',
+    category: 'Afundo',
+    angleTemplate: { leftKnee:92,  rightKnee:145, leftHip:98,  rightHip:155, leftElbow:165, rightElbow:165 }
+  },
+  {
+    name: 'Afundo com Salto',
+    category: 'Afundo',
+    angleTemplate: { leftKnee:85,  rightKnee:145, leftHip:90,  rightHip:152, leftElbow:68,  rightElbow:68  }
+  },
+
+  // ─── GLÚTEOS / QUADRIL ───────────────────────────────────────────────────
+  {
+    name: 'Ponte de Glúteo',
+    category: 'Glúteo',
+    angleTemplate: { leftKnee:90,  rightKnee:90,  leftHip:135, rightHip:135, leftElbow:168, rightElbow:168 }
+  },
+  {
+    name: 'Hip Thrust',
+    category: 'Glúteo',
+    angleTemplate: { leftKnee:90,  rightKnee:90,  leftHip:172, rightHip:172, leftElbow:165, rightElbow:165 }
+  },
+  {
+    name: 'Donkey Kick',
+    category: 'Glúteo',
+    angleTemplate: { leftKnee:90,  rightKnee:160, leftHip:92,  rightHip:135, leftElbow:165, rightElbow:165 }
+  },
+  {
+    name: 'Fire Hydrant',
+    category: 'Glúteo',
+    angleTemplate: { leftKnee:90,  rightKnee:90,  leftHip:95,  rightHip:95,  leftElbow:165, rightElbow:165 }
+  },
+  {
+    name: 'Glúteo 4 Apoios',
+    category: 'Glúteo',
+    angleTemplate: { leftKnee:90,  rightKnee:170, leftHip:92,  rightHip:168, leftElbow:168, rightElbow:168 }
+  },
+  {
+    name: 'Chute Traseiro',
+    category: 'Glúteo',
+    angleTemplate: { leftKnee:90,  rightKnee:165, leftHip:88,  rightHip:155, leftElbow:165, rightElbow:165 }
+  },
+  {
+    name: 'Chute Lateral',
+    category: 'Glúteo',
+    angleTemplate: { leftKnee:170, rightKnee:90,  leftHip:160, rightHip:60,  leftElbow:100, rightElbow:100 }
+  },
+  {
+    name: 'Abdução de Quadril',
+    category: 'Glúteo',
+    angleTemplate: { leftKnee:170, rightKnee:170, leftHip:175, rightHip:145, leftElbow:165, rightElbow:165 }
+  },
+  {
+    name: 'Wall Sit com Elevação',
+    category: 'Glúteo',
+    angleTemplate: { leftKnee:90,  rightKnee:175, leftHip:90,  rightHip:80,  leftElbow:165, rightElbow:165 }
+  },
+
+  // ─── FLEXÕES ─────────────────────────────────────────────────────────────
+  {
+    name: 'Flexão de Joelho',
+    category: 'Flexão',
+    angleTemplate: { leftKnee:52,  rightKnee:52,  leftHip:165, rightHip:165, leftElbow:70,  rightElbow:70  }
+  },
+  {
+    name: 'Flexão Aberta',
+    category: 'Flexão',
+    angleTemplate: { leftKnee:168, rightKnee:168, leftHip:165, rightHip:165, leftElbow:65,  rightElbow:65  }
+  },
+  {
+    name: 'Flexão Diamante',
+    category: 'Flexão',
+    angleTemplate: { leftKnee:168, rightKnee:168, leftHip:165, rightHip:165, leftElbow:60,  rightElbow:60  }
+  },
+  {
+    name: 'Pike Push-Up',
+    category: 'Flexão',
+    angleTemplate: { leftKnee:165, rightKnee:165, leftHip:90,  rightHip:90,  leftElbow:75,  rightElbow:75  }
+  },
+  {
+    name: 'Flexão Archer',
+    category: 'Flexão',
+    angleTemplate: { leftKnee:168, rightKnee:168, leftHip:165, rightHip:165, leftElbow:62,  rightElbow:168 }
+  },
+  {
+    name: 'Flexão Declinada',
+    category: 'Flexão',
+    angleTemplate: { leftKnee:130, rightKnee:130, leftHip:155, rightHip:155, leftElbow:68,  rightElbow:68  }
+  },
+  {
+    name: 'Flexão Inclinada',
+    category: 'Flexão',
+    angleTemplate: { leftKnee:168, rightKnee:168, leftHip:165, rightHip:165, leftElbow:72,  rightElbow:72  }
+  },
+
+  // ─── PRANCHA ─────────────────────────────────────────────────────────────
+  {
+    name: 'Prancha',
+    category: 'Prancha',
+    angleTemplate: { leftKnee:175, rightKnee:175, leftHip:175, rightHip:175, leftElbow:168, rightElbow:168 }
+  },
+  {
+    name: 'Prancha Lateral',
+    category: 'Prancha',
+    angleTemplate: { leftKnee:172, rightKnee:172, leftHip:172, rightHip:172, leftElbow:168, rightElbow:85  }
+  },
+  {
+    name: 'Prancha com Toque',
+    category: 'Prancha',
+    angleTemplate: { leftKnee:170, rightKnee:170, leftHip:170, rightHip:170, leftElbow:165, rightElbow:165 }
+  },
+  {
+    name: 'Prancha Dinâmica',
+    category: 'Prancha',
+    angleTemplate: { leftKnee:168, rightKnee:168, leftHip:165, rightHip:165, leftElbow:88,  rightElbow:88  }
+  },
+  {
+    name: 'Escalador',
+    category: 'Prancha',
+    angleTemplate: { leftKnee:68,  rightKnee:165, leftHip:72,  rightHip:168, leftElbow:172, rightElbow:172 }
+  },
+  {
+    name: 'Prancha com Extensão',
+    category: 'Prancha',
+    angleTemplate: { leftKnee:170, rightKnee:145, leftHip:168, rightHip:148, leftElbow:165, rightElbow:165 }
+  },
+
+  // ─── ABDÔMEN ─────────────────────────────────────────────────────────────
+  {
+    name: 'Crunch Abdominal',
+    category: 'Abdômen',
+    angleTemplate: { leftKnee:90,  rightKnee:90,  leftHip:72,  rightHip:72,  leftElbow:18,  rightElbow:18  }
+  },
+  {
+    name: 'Elevação de Pernas',
+    category: 'Abdômen',
+    angleTemplate: { leftKnee:168, rightKnee:168, leftHip:90,  rightHip:90,  leftElbow:170, rightElbow:170 }
+  },
+  {
+    name: 'Bicicleta Abdominal',
+    category: 'Abdômen',
+    angleTemplate: { leftKnee:55,  rightKnee:165, leftHip:68,  rightHip:145, leftElbow:20,  rightElbow:20  }
+  },
+  {
+    name: 'Russian Twist',
+    category: 'Abdômen',
+    angleTemplate: { leftKnee:90,  rightKnee:90,  leftHip:75,  rightHip:75,  leftElbow:148, rightElbow:148 }
+  },
+  {
+    name: 'Superman',
+    category: 'Abdômen',
+    angleTemplate: { leftKnee:168, rightKnee:168, leftHip:165, rightHip:165, leftElbow:170, rightElbow:170 }
+  },
+  {
+    name: 'Tesoura',
+    category: 'Abdômen',
+    angleTemplate: { leftKnee:168, rightKnee:168, leftHip:118, rightHip:55,  leftElbow:168, rightElbow:168 }
+  },
+  {
+    name: 'Hiperextensão',
+    category: 'Abdômen',
+    angleTemplate: { leftKnee:170, rightKnee:170, leftHip:138, rightHip:138, leftElbow:15,  rightElbow:15  }
+  },
+  {
+    name: 'Sit-Up Completo',
+    category: 'Abdômen',
+    angleTemplate: { leftKnee:90,  rightKnee:90,  leftHip:58,  rightHip:58,  leftElbow:12,  rightElbow:12  }
+  },
+
+  // ─── OMBROS / BRAÇOS ─────────────────────────────────────────────────────
+  {
+    name: 'Desenvolvimento',
+    category: 'Ombro',
+    angleTemplate: { leftKnee:172, rightKnee:172, leftHip:170, rightHip:170, leftElbow:152, rightElbow:152 }
+  },
+  {
+    name: 'Elevação Lateral',
+    category: 'Ombro',
+    angleTemplate: { leftKnee:172, rightKnee:172, leftHip:170, rightHip:170, leftElbow:165, rightElbow:165 }
+  },
+  {
+    name: 'Elevação Frontal',
+    category: 'Ombro',
+    angleTemplate: { leftKnee:172, rightKnee:172, leftHip:170, rightHip:170, leftElbow:168, rightElbow:168 }
+  },
+  {
+    name: 'Remada Curvada',
+    category: 'Costas',
+    angleTemplate: { leftKnee:160, rightKnee:160, leftHip:90,  rightHip:90,  leftElbow:88,  rightElbow:88  }
+  },
+  {
+    name: 'Remada Alta',
+    category: 'Costas',
+    angleTemplate: { leftKnee:172, rightKnee:172, leftHip:170, rightHip:170, leftElbow:92,  rightElbow:92  }
+  },
+  {
+    name: 'Stiff',
+    category: 'Costas',
+    angleTemplate: { leftKnee:165, rightKnee:165, leftHip:68,  rightHip:68,  leftElbow:168, rightElbow:168 }
+  },
+  {
+    name: 'Boa Manhã',
+    category: 'Costas',
+    angleTemplate: { leftKnee:168, rightKnee:168, leftHip:62,  rightHip:62,  leftElbow:20,  rightElbow:20  }
+  },
+  {
+    name: 'Rosca Direta',
+    category: 'Bíceps',
+    angleTemplate: { leftKnee:172, rightKnee:172, leftHip:170, rightHip:170, leftElbow:45,  rightElbow:45  }
+  },
+  {
+    name: 'Rosca Alternada',
+    category: 'Bíceps',
+    angleTemplate: { leftKnee:172, rightKnee:172, leftHip:170, rightHip:170, leftElbow:42,  rightElbow:168 }
+  },
+  {
+    name: 'Rosca Martelo',
+    category: 'Bíceps',
+    angleTemplate: { leftKnee:172, rightKnee:172, leftHip:170, rightHip:170, leftElbow:48,  rightElbow:48  }
+  },
+  {
+    name: 'Tríceps Testa',
+    category: 'Tríceps',
+    angleTemplate: { leftKnee:172, rightKnee:172, leftHip:170, rightHip:170, leftElbow:50,  rightElbow:50  }
+  },
+  {
+    name: 'Tríceps Banco',
+    category: 'Tríceps',
+    angleTemplate: { leftKnee:168, rightKnee:168, leftHip:145, rightHip:145, leftElbow:75,  rightElbow:75  }
+  },
+  {
+    name: 'Crucifixo',
+    category: 'Peito',
+    angleTemplate: { leftKnee:172, rightKnee:172, leftHip:170, rightHip:170, leftElbow:162, rightElbow:162 }
+  },
+  {
+    name: 'Pullover',
+    category: 'Peito',
+    angleTemplate: { leftKnee:90,  rightKnee:90,  leftHip:80,  rightHip:80,  leftElbow:148, rightElbow:148 }
+  },
+
+  // ─── CARDIO / DINÂMICO ───────────────────────────────────────────────────
+  {
+    name: 'Burpee – Prancha',
+    category: 'Cardio',
+    angleTemplate: { leftKnee:170, rightKnee:170, leftHip:168, rightHip:168, leftElbow:168, rightElbow:168 }
+  },
+  {
+    name: 'Pular Corda',
+    category: 'Cardio',
+    angleTemplate: { leftKnee:155, rightKnee:155, leftHip:165, rightHip:165, leftElbow:112, rightElbow:112 }
+  },
+  {
+    name: 'Agachamento com Salto Lateral',
+    category: 'Cardio',
+    angleTemplate: { leftKnee:88,  rightKnee:88,  leftHip:90,  rightHip:90,  leftElbow:68,  rightElbow:68  }
+  },
+  {
+    name: 'Corrida Estacionária',
+    category: 'Cardio',
+    angleTemplate: { leftKnee:75,  rightKnee:155, leftHip:78,  rightHip:162, leftElbow:88,  rightElbow:148 }
+  },
+  {
+    name: 'Star Jump',
+    category: 'Cardio',
+    angleTemplate: { leftKnee:148, rightKnee:148, leftHip:155, rightHip:155, leftElbow:165, rightElbow:165 }
+  },
+  {
+    name: 'Skipping',
+    category: 'Cardio',
+    angleTemplate: { leftKnee:62,  rightKnee:158, leftHip:68,  rightHip:168, leftElbow:80,  rightElbow:148 }
+  },
+
+  // ─── PANTURRILHA / EQUILÍBRIO ────────────────────────────────────────────
+  {
+    name: 'Elevação de Panturrilha',
+    category: 'Panturrilha',
+    angleTemplate: { leftKnee:172, rightKnee:172, leftHip:172, rightHip:172, leftElbow:165, rightElbow:165 }
+  },
+  {
+    name: 'Elevação Unilateral',
+    category: 'Panturrilha',
+    angleTemplate: { leftKnee:172, rightKnee:170, leftHip:170, rightHip:168, leftElbow:165, rightElbow:165 }
+  },
+  {
+    name: 'Step Up',
+    category: 'Perna',
+    angleTemplate: { leftKnee:90,  rightKnee:170, leftHip:90,  rightHip:168, leftElbow:165, rightElbow:165 }
+  },
+  {
+    name: 'Step Down',
+    category: 'Perna',
+    angleTemplate: { leftKnee:105, rightKnee:168, leftHip:108, rightHip:170, leftElbow:165, rightElbow:165 }
+  },
+];
+
+// ════════════════════════════════════════════════════════════════════════════
+// AUTH STATUS
+// ════════════════════════════════════════════════════════════════════════════
+const authDot   = document.getElementById('auth-dot');
+const authLabel = document.getElementById('auth-label');
+
+firebase.auth().onAuthStateChanged(user => {
+  if (user) {
+    authDot.style.background   = '#00ff88';
+    authLabel.textContent      = `Firebase OK — uid: ${user.uid.slice(0, 8)}…`;
+  } else {
+    authDot.style.background   = '#ff4455';
+    authLabel.textContent      = 'Sem autenticação — habilite Anonymous Auth no console do Firebase';
+  }
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+// UI – Render cards
+// ════════════════════════════════════════════════════════════════════════════
+const grid = document.getElementById('grid');
+const selCount = document.getElementById('sel-count');
+const log = document.getElementById('log');
+
+let selected = new Set();
+let cardEls  = [];
+
+function angleChips(tpl) {
+  return Object.entries(tpl).map(([k, v]) => {
+    const short = k
+      .replace('left','L').replace('right','R')
+      .replace('Knee','Jo').replace('Hip','Qu')
+      .replace('Elbow','Co').replace('Shoulder','Om')
+      .replace('Angle','An').replace('trunk','Tr')
+      .replace('Ankle','To');
+    return `<div class="angle-chip">${short}=<span>${Math.round(v)}°</span></div>`;
+  }).join('');
+}
+
+EXERCISES.forEach((ex, i) => {
+  const card = document.createElement('div');
+  card.className = 'card';
+  card.innerHTML = `
+    <div class="card-name">${ex.name}</div>
+    <div class="card-category">${ex.category}</div>
+    <div class="card-angles">${angleChips(ex.angleTemplate)}</div>
+  `;
+  card.addEventListener('click', () => {
+    if (card.classList.contains('done')) return;
+    if (selected.has(i)) { selected.delete(i); card.classList.remove('selected'); }
+    else                 { selected.add(i);    card.classList.add('selected'); }
+    selCount.textContent = `${selected.size} selecionados`;
+  });
+  cardEls.push(card);
+  grid.appendChild(card);
+});
+
+document.getElementById('btn-select-all').addEventListener('click', () => {
+  EXERCISES.forEach((_, i) => {
+    if (!cardEls[i].classList.contains('done')) {
+      selected.add(i);
+      cardEls[i].classList.add('selected');
+    }
+  });
+  selCount.textContent = `${selected.size} selecionados`;
+});
+
+document.getElementById('btn-deselect-all').addEventListener('click', () => {
+  selected.clear();
+  cardEls.forEach(c => c.classList.remove('selected'));
+  selCount.textContent = '0 selecionados';
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+// LOG
+// ════════════════════════════════════════════════════════════════════════════
+function addLog(msg, type = '') {
+  const line = document.createElement('div');
+  line.className = 'log-line' + (type ? ' log-' + type : '');
+  line.textContent = msg;
+  log.appendChild(line);
+  log.scrollTop = log.scrollHeight;
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// UPLOAD
+// ════════════════════════════════════════════════════════════════════════════
+document.getElementById('btn-upload').addEventListener('click', async () => {
+  if (selected.size === 0) { addLog('Nenhum exercício selecionado.', 'err'); return; }
+
+  const cfg = window.FitAIConfig;
+  if (!cfg || !cfg.saveCustomExercise) {
+    addLog('Firebase não inicializado. Verifique config.js.', 'err');
+    return;
+  }
+
+  const wrap = document.getElementById('progress-wrap');
+  const fill = document.getElementById('progress-fill');
+  const ptxt = document.getElementById('progress-text');
+
+  wrap.style.display = 'block';
+  const indices = Array.from(selected);
+  let done = 0;
+  let errors = 0;
+
+  document.getElementById('btn-upload').disabled = true;
+
+  for (const i of indices) {
+    const ex = EXERCISES[i];
+    const payload = {
+      name:          ex.name,
+      category:      ex.category,
+      angleTemplate: ex.angleTemplate,
+      signature:     Object.values(ex.angleTemplate).map(v => Math.round(v)).join('-'),
+      frameCount:    120,
+      createdAt:     new Date().toISOString()
+    };
+
+    try {
+      await cfg.saveCustomExercise(payload);
+      done++;
+      cardEls[i].classList.remove('selected');
+      cardEls[i].classList.add('done');
+      selected.delete(i);
+      addLog(`✓ ${ex.name}`, 'ok');
+    } catch (err) {
+      errors++;
+      cardEls[i].classList.add('error');
+      addLog(`✗ ${ex.name}: ${err.message}`, 'err');
+    }
+
+    const pct = Math.round(((done + errors) / indices.length) * 100);
+    fill.style.width = pct + '%';
+    ptxt.textContent = `${done + errors} / ${indices.length} — ${pct}%`;
+
+    await new Promise(r => setTimeout(r, 80));
+  }
+
+  selCount.textContent = `${selected.size} selecionados`;
+  ptxt.textContent = `Concluído: ${done} enviados, ${errors} erros.`;
+  addLog(`─── Fim: ${done} salvos, ${errors} erros ───`, 'info');
+  document.getElementById('btn-upload').disabled = false;
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+// LIMPAR COLEÇÃO (só Firestore, não localStorage)
+// ════════════════════════════════════════════════════════════════════════════
+document.getElementById('btn-clear-db').addEventListener('click', async () => {
+  if (!confirm('Apagar TODOS os exercícios da coleção "exercises" no Firestore?')) return;
+
+  addLog('Limpando coleção…', 'info');
+  try {
+    const db = firebase.firestore();
+    const snap = await db.collection('exercises').get();
+    const batch = db.batch();
+    snap.docs.forEach(d => batch.delete(d.ref));
+    await batch.commit();
+    addLog(`${snap.size} documentos removidos.`, 'ok');
+    cardEls.forEach(c => c.classList.remove('done', 'error', 'selected'));
+    selected.clear();
+    selCount.textContent = '0 selecionados';
+  } catch (err) {
+    addLog('Erro: ' + err.message, 'err');
+  }
+});
+</script>
+</body>
+</html>

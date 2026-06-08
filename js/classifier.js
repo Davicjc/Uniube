@@ -27,6 +27,7 @@ class ExerciseClassifier {
   }
 
   reset() {
+    this._expectedExercise = null; // guided mode: skip auto-detection
     // Current exercise tracking
     this.currentExercise = null;
     this.repCount        = 0;
@@ -60,6 +61,19 @@ class ExerciseClassifier {
 
   setCustomExercises(list) {
     this.customExercises = list || [];
+  }
+
+  // Guided mode: skip auto-detection and track only this exercise
+  setExpectedExercise(name) {
+    if (this._expectedExercise === name) return;
+    this._expectedExercise    = name;
+    this._states              = {};
+    this._repMinAngles        = {};
+    this._repMaxAngles        = {};
+    this._detectionBuffer     = [];
+    this._jjState             = 'closed';
+    this._jjOpened            = false;
+    this._pushupState         = 'up';
   }
 
   // ── update ─────────────────────────────────────────────────────────────────
@@ -97,28 +111,23 @@ class ExerciseClassifier {
     const gl = (i) => window.PoseDetector.getLandmark(landmarks, i);
     const vis = (lm, t = 0.5) => window.PoseDetector.isVisible(lm, t);
 
-    // ── Try to identify the current exercise ──
-    const detected = this._detectExercise(landmarks, angles, gl, vis);
-
-    if (detected) {
-      this._detectionBuffer.push(detected);
-      if (this._detectionBuffer.length > this._bufferSize) {
-        this._detectionBuffer.shift();
-      }
-
-      // Require stable detection over 3 frames before switching
-      const stable = this._getMostFrequent(this._detectionBuffer);
-      if (stable && stable !== this.currentExercise) {
-        this.currentExercise = stable;
-      }
+    // ── Guided mode: use expected exercise directly (skip auto-detection) ──
+    if (this._expectedExercise) {
+      this.currentExercise = this._expectedExercise;
     } else {
-      // Grace period: keep current for a few frames
-      this._detectionBuffer.push(null);
-      if (this._detectionBuffer.length > this._bufferSize) {
-        this._detectionBuffer.shift();
+      // ── Auto-detect mode ──
+      const detected = this._detectExercise(landmarks, angles, gl, vis);
+      if (detected) {
+        this._detectionBuffer.push(detected);
+        if (this._detectionBuffer.length > this._bufferSize) this._detectionBuffer.shift();
+        const stable = this._getMostFrequent(this._detectionBuffer);
+        if (stable && stable !== this.currentExercise) this.currentExercise = stable;
+      } else {
+        this._detectionBuffer.push(null);
+        if (this._detectionBuffer.length > this._bufferSize) this._detectionBuffer.shift();
+        const stable = this._getMostFrequent(this._detectionBuffer);
+        if (!stable) this.currentExercise = null;
       }
-      const stable = this._getMostFrequent(this._detectionBuffer);
-      if (!stable) this.currentExercise = null;
     }
 
     if (!this.currentExercise) {
@@ -332,7 +341,17 @@ class ExerciseClassifier {
       this._states[key] = 'up';
       this._repMinAngles[key] = avgKnee;
     } else {
-      // Ongoing – give real-time feedback
+      // Real-time form quality during movement
+      let rtQ = 1.0;
+      const lKneeLM  = gl(window.LANDMARKS.LEFT_KNEE);
+      const lAnkleLM = gl(window.LANDMARKS.LEFT_ANKLE);
+      const rKneeLM  = gl(window.LANDMARKS.RIGHT_KNEE);
+      const rAnkleLM = gl(window.LANDMARKS.RIGHT_ANKLE);
+      if (vis(lKneeLM) && vis(lAnkleLM) && lKneeLM.x - lAnkleLM.x > 0.05) rtQ -= 0.25;
+      if (vis(rKneeLM) && vis(rAnkleLM) && rAnkleLM.x - rKneeLM.x > 0.05) rtQ -= 0.25;
+      if (angles.trunkAngle !== null && angles.trunkAngle > 40) rtQ -= 0.2;
+      result.quality = Math.max(0, Math.min(1, rtQ));
+
       if (avgKnee < 160) {
         if (avgKnee > 110) {
           result.feedback = ['Desça mais — tente chegar a 90°'];
@@ -400,6 +419,17 @@ class ExerciseClassifier {
         ? ['Excelente polichinelo!']
         : ['Tente abrir mais os braços e as pernas simetricamente.'];
     } else {
+      // Real-time symmetry quality
+      let rtQ = 1.0;
+      if (vis(lWrist) && vis(rWrist)) {
+        rtQ -= Math.min(Math.abs(lWrist.y - rWrist.y) * 5, 0.4);
+      }
+      if (vis(lAnkle) && vis(rAnkle) && vis(lShoulder) && vis(rShoulder)) {
+        const legAsym = Math.abs((lAnkle.x - lShoulder.x) - (rShoulder.x - rAnkle.x));
+        rtQ -= Math.min(legAsym * 3, 0.3);
+      }
+      result.quality = Math.max(0, Math.min(1, rtQ));
+
       if (this._jjState === 'closed') {
         result.feedback = ['Abra os braços e pernas ao mesmo tempo.'];
       } else {
@@ -471,6 +501,16 @@ class ExerciseClassifier {
       issues.forEach(i => this.issues.add(i));
       this._repMinAngles[key] = avgElbow;
     } else {
+      // Real-time body alignment quality
+      let rtQ = 1.0;
+      if (vis(lHip, 0.4) && vis(lShoulder, 0.4) && vis(lAnkle, 0.4)) {
+        const midHipY      = (lHip.y + rHip.y) / 2;
+        const midShoulderY = (lShoulder.y + rShoulder.y) / 2;
+        const midAnkleY    = (lAnkle.y + rAnkle.y) / 2;
+        const sag = midHipY - (midShoulderY + midAnkleY) / 2;
+        if (Math.abs(sag) > 0.04) rtQ -= Math.min(Math.abs(sag) * 5, 0.4);
+      }
+      result.quality = Math.max(0, Math.min(1, rtQ));
       result.feedback = this._states[key] === 'up'
         ? ['Flexione os cotovelos para descer.']
         : ['Empurre para cima para completar a repetição.'];
@@ -517,7 +557,16 @@ class ExerciseClassifier {
     } else if (rightDown && this._states[key] === 'standing') {
       this._states[key] = 'right';
       result.feedback = ['Avanço direito – volte para a posição inicial.'];
+    } else if (leftDown || rightDown) {
+      // Real-time lunge quality while holding the position
+      let rtQ = 1.0;
+      const activeKnee = leftDown ? lKnee : rKnee;
+      if (activeKnee > 115) rtQ -= 0.3;
+      if (angles.trunkAngle !== null && angles.trunkAngle > 20) rtQ -= 0.2;
+      result.quality = Math.max(0, Math.min(1, rtQ));
+      result.feedback = ['Volte para a posição inicial.'];
     } else {
+      result.quality = 1.0;
       result.feedback = ['Dê um passo à frente para iniciar o avanço.'];
     }
 
@@ -570,6 +619,7 @@ class ExerciseClassifier {
       }
     } else if (!lRaised && !rRaised) {
       this._states[key] = 'none';
+      result.quality = 0.3;
       result.feedback = ['Eleve o joelho acima do quadril.'];
     }
 
