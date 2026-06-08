@@ -50,6 +50,12 @@ const state = {
   poseDetector: null,
   classifier:   null,
   customExercises: [],
+  char3d:       null,
+  charLib:      null,
+
+  exlibFilter:   'all',
+  exlibSearch:   '',
+  exlibSelected: null,
 
   timerInterval: null,
   toastTimeout:  null
@@ -111,6 +117,31 @@ const EXERCISE_INFO = {
   'Hiperextensão':          { icon:'📏', muscles:'Lombar, Glúteos',                       desc:'Deitado de barriga para baixo, eleve o tronco contraindo a lombar.',                                                                                                                    tips:['Movimento controlado','Não hiperestenda demais','Mãos atrás da cabeça'] },
   'Tesoura':                { icon:'✂️', muscles:'Abdômen Inferior',                      desc:'Deitado de costas, pernas levemente elevadas. Alterne-as verticalmente.',                                                                                                               tips:['Lombar colada ao chão','Pernas retas','Movimentos alternados'] },
 };
+
+// Exercises that require gym equipment (everything else is home/bodyweight)
+const _GYM_NAMES = new Set([
+  'Desenvolvimento','Elevação Lateral','Remada Curvada','Stiff','Boa Manhã',
+  'Rosca Direta','Rosca Alternada','Rosca Martelo',
+  'Tríceps Testa','Crucifixo','Hip Thrust'
+]);
+
+// Category labels derived from primary muscle group
+const _CAT_MAP = {
+  'Quadríceps':'Pernas','Glúteos':'Glúteo','Cardio':'Cardio',
+  'Peitoral':'Peito','Core':'Core','Oblíquos':'Abdômen',
+  'Reto Abdominal':'Abdômen','Abdômen Inferior':'Abdômen',
+  'Bíceps':'Bíceps','Tríceps':'Tríceps','Deltóides':'Ombro',
+  'Deltóide Médio':'Ombro','Dorsais':'Costas','Isquiotibiais':'Posterior',
+  'Lombar':'Costas','Panturrilha':'Panturrilha','Gastrocnêmio':'Panturrilha',
+  'Glúteo Médio':'Glúteo','Romboides':'Costas'
+};
+
+const BUILTIN_EXERCISES = Object.keys(EXERCISE_INFO).map(name => {
+  const primary  = EXERCISE_INFO[name].muscles.split(',')[0].trim();
+  const category = _CAT_MAP[primary] || primary;
+  const location = _GYM_NAMES.has(name) ? 'gym' : 'home';
+  return { name, category, location };
+});
 
 // ════════════════════════════════════════════════════════════════════════════
 // DOM HELPERS
@@ -473,7 +504,6 @@ function showExerciseDemo() {
 
   $('demo-ex-num').textContent    = state.planIndex + 1;
   $('demo-ex-total').textContent  = state.plan.length;
-  $('demo-icon').textContent      = info.icon;
   $('demo-name').textContent      = item.name;
   $('demo-muscles').textContent   = info.muscles;
   $('demo-description').textContent = info.desc;
@@ -494,6 +524,11 @@ function showExerciseDemo() {
   $('btn-demo-skip').style.display     = state.planIndex < state.plan.length - 1 ? 'inline-flex' : 'none';
 
   showScreen('demo');
+
+  if (state.char3d) {
+    state.char3d.resize();
+    state.char3d.playExercise(item.name);
+  }
 }
 
 async function startGuidedExercise() {
@@ -509,6 +544,7 @@ async function startGuidedExercise() {
   }
   cd.style.display = 'none';
 
+  if (state.char3d) state.char3d.stop();
   showScreen('workout');
 
   if (!state.workout.active) {
@@ -1429,6 +1465,104 @@ function renderHistoryList(workouts) {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
+// EXERCISE LIBRARY
+// ════════════════════════════════════════════════════════════════════════════
+function showExerciseLibrary() {
+  showScreen('exercises');
+
+  if (window.FitAIChar && !state.charLib) {
+    state.charLib = new window.FitAIChar('char-canvas-lib');
+  } else if (state.charLib) {
+    state.charLib.resize();
+  }
+
+  state.exlibFilter = 'all';
+  state.exlibSearch = '';
+
+  const searchEl = $('exlib-search');
+  if (searchEl) searchEl.value = '';
+
+  // Reset tab active states
+  document.querySelectorAll('.exlib-tab').forEach(t => {
+    t.classList.toggle('active', t.dataset.filter === 'all');
+  });
+
+  renderExLibList();
+}
+
+function renderExLibList() {
+  const filter = state.exlibFilter || 'all';
+  const search = (state.exlibSearch || '').trim().toLowerCase();
+
+  // Merge builtin + custom, deduplicate by name
+  const allEx = [...BUILTIN_EXERCISES];
+  (state.customExercises || []).forEach(ce => {
+    if (!allEx.find(e => e.name === ce.name)) {
+      allEx.push({ name: ce.name, category: ce.category || 'Geral', location: ce.location || 'home' });
+    }
+  });
+
+  let items = allEx;
+  if (filter !== 'all') items = items.filter(e => e.location === filter);
+  if (search) items = items.filter(e => e.name.toLowerCase().includes(search) || (e.category || '').toLowerCase().includes(search));
+
+  // Sort alphabetically
+  items.sort((a, b) => a.name.localeCompare(b.name, 'pt'));
+
+  const list = $('exlib-list');
+  if (!list) return;
+  list.innerHTML = '';
+
+  if (items.length === 0) {
+    list.innerHTML = '<p style="color:#666;font-size:14px;text-align:center;padding:24px 0;">Nenhum exercício encontrado.</p>';
+    return;
+  }
+
+  items.forEach(ex => {
+    const locIcon = ex.location === 'gym' ? '🏋️' : '🏠';
+    const item = document.createElement('div');
+    item.className = 'exlib-item';
+    item.dataset.name = ex.name;
+    item.innerHTML = `
+      <div class="exlib-item-loc">${locIcon}</div>
+      <div class="exlib-item-info">
+        <div class="exlib-item-name">${ex.name}</div>
+        <div class="exlib-item-cat">${ex.category || 'Geral'}</div>
+      </div>
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#444" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+    `;
+    item.addEventListener('click', () => selectLibEx(ex));
+    list.appendChild(item);
+  });
+
+  // Re-highlight selected item if any
+  if (state.exlibSelected) {
+    const active = list.querySelector(`[data-name="${CSS.escape(state.exlibSelected)}"]`);
+    if (active) active.classList.add('active');
+  }
+}
+
+function selectLibEx(ex) {
+  state.exlibSelected = ex.name;
+
+  // Highlight item
+  document.querySelectorAll('.exlib-item').forEach(el => {
+    el.classList.toggle('active', el.dataset.name === ex.name);
+  });
+
+  // Update preview info
+  const info = EXERCISE_INFO[ex.name] || {};
+  $('exlib-preview-name').textContent = ex.name;
+  $('exlib-preview-meta').textContent = info.muscles || ex.category || 'Geral';
+
+  // Play 3D character
+  if (state.charLib) {
+    state.charLib.resize();
+    state.charLib.playExercise(ex.name);
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
 // INIT  (synchronous – no await, so errors never silently swallow listeners)
 // ════════════════════════════════════════════════════════════════════════════
 function _on(id, event, handler) {
@@ -1451,6 +1585,7 @@ function init() {
   _on('btn-start-workout',   'click', showProfileScreen);
   _on('btn-record-new-home', 'click', openRecordScreen);
   _on('btn-history',         'click', loadHistory);
+  _on('btn-exercises',       'click', showExerciseLibrary);
 
   // Profile screen
   _on('btn-generate-plan', 'click', submitProfile);
@@ -1492,7 +1627,30 @@ function init() {
   _on('btn-back-history',   'click', () => showScreen('home'));
   _on('btn-first-workout',  'click', startWorkout);
 
+  // Exercise library
+  _on('btn-back-exercises', 'click', () => {
+    if (state.charLib) state.charLib.stop();
+    showScreen('home');
+  });
+  document.querySelectorAll('.exlib-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      document.querySelectorAll('.exlib-tab').forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+      state.exlibFilter = tab.dataset.filter;
+      renderExLibList();
+    });
+  });
+  _on('exlib-search', 'input', (e) => {
+    state.exlibSearch = e.target.value;
+    renderExLibList();
+  });
+
   console.info('[FitAI] Todos os listeners registrados com sucesso.');
+
+  // 3-D character preview
+  if (window.FitAIChar) {
+    state.char3d = new window.FitAIChar('char-canvas');
+  }
 
   // Load custom exercises in background – never blocks UI
   _loadCustomExercises();
