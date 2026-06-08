@@ -35,26 +35,6 @@
       line-height: 1.6;
     }
     .warning strong { color: #ffcc66; }
-    .info-box {
-      background: #0a1a2a;
-      border: 1px solid #1a5a8a;
-      border-radius: 10px;
-      padding: 16px 20px;
-      font-size: .82rem;
-      color: #88ccff;
-      line-height: 1.7;
-      width: 100%;
-      max-width: 560px;
-      margin-bottom: 20px;
-    }
-    .info-box strong { color: #aaddff; }
-    .info-box code {
-      background: #0d2035;
-      padding: 2px 6px;
-      border-radius: 4px;
-      font-size: .78rem;
-      color: #55eeff;
-    }
     button {
       width: 100%;
       padding: 14px;
@@ -69,19 +49,9 @@
     button:last-child { margin-bottom: 0; }
     button:active { transform: scale(.98); }
     button:disabled { opacity: .45; cursor: not-allowed; }
-    #btnSeed {
-      background: linear-gradient(135deg, #ff4444, #cc0000);
-      color: #fff;
-    }
-    #btnAddOnly {
-      background: linear-gradient(135deg, #00aa55, #007733);
-      color: #fff;
-    }
-    #btnStatus {
-      background: #1e1e1e;
-      border: 1px solid #333;
-      color: #ccc;
-    }
+    #btnSeed    { background: linear-gradient(135deg, #ff4444, #cc0000); color: #fff; }
+    #btnAddOnly { background: linear-gradient(135deg, #00aa55, #007733); color: #fff; }
+    #btnStatus  { background: #1e1e1e; border: 1px solid #333; color: #ccc; }
     #log {
       background: #111;
       border: 1px solid #222;
@@ -98,47 +68,17 @@
     .log-err  { color: #ff4444; }
     .log-info { color: #aaa; }
     .log-head { color: #00aaff; font-weight: bold; }
-    #progress {
-      width: 100%;
-      max-width: 560px;
-      height: 6px;
-      background: #222;
-      border-radius: 3px;
-      overflow: hidden;
-      margin-bottom: 12px;
-    }
-    #progressBar {
-      height: 100%;
-      width: 0%;
-      background: linear-gradient(90deg, #00ff88, #00aaff);
-      transition: width .3s;
-    }
+    #progress { width: 100%; max-width: 560px; height: 6px; background: #222; border-radius: 3px; overflow: hidden; margin-bottom: 12px; }
+    #progressBar { height: 100%; width: 0%; background: linear-gradient(90deg, #00ff88, #00aaff); transition: width .3s; }
   </style>
 </head>
 <body>
 
   <h1>FitAI – Seed de Exercícios</h1>
-  <p class="sub">Apaga toda a coleção <code>exercises</code> do Firestore e recria os exercícios com dados de animação reais (animFrames + motionRange).</p>
+  <p class="sub">Apaga toda a coleção <code>exercises</code> do Firestore e recria 70 exercícios com dados de animação reais.</p>
 
   <div class="card warning">
-    <strong>⚠ Atenção:</strong> O botão vermelho tenta apagar todos os exercícios antes de criar os novos. Se aparecer "Missing or insufficient permissions", use o botão verde (só adiciona, não apaga) ou siga as instruções abaixo.
-  </div>
-
-  <div class="info-box">
-    <strong>Se der erro de permissão ao deletar:</strong><br>
-    1. Acesse <strong>console.firebase.google.com</strong><br>
-    2. Projeto <code>faculdade-368a4</code> → Firestore → <strong>Rules</strong><br>
-    3. Substitua as regras por:<br><br>
-    <code>rules_version = '2';<br>
-    service cloud.firestore {<br>
-    &nbsp;&nbsp;match /databases/{database}/documents {<br>
-    &nbsp;&nbsp;&nbsp;&nbsp;match /{document=**} {<br>
-    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;allow read, write: if request.auth != null;<br>
-    &nbsp;&nbsp;&nbsp;&nbsp;}<br>
-    &nbsp;&nbsp;}<br>
-    }</code><br><br>
-    4. Publique as regras e clique novamente no botão vermelho.<br>
-    5. Após o seed, restaure as regras originais.
+    <strong>⚠ Atenção:</strong> O botão vermelho tenta apagar todos os exercícios antes de criar os novos. Se aparecer "Missing or insufficient permissions", use o botão verde.
   </div>
 
   <div class="card">
@@ -150,13 +90,11 @@
   <div id="progress"><div id="progressBar"></div></div>
   <div id="log"><span class="log-info">Aguardando ação...</span></div>
 
-  <!-- Firebase Compat SDK 9.23.0 -->
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 
   <script>
-  // ── Firebase init ──────────────────────────────────────────────────────────
   const firebaseConfig = {
     apiKey:            'AIzaSyDee2kBiZejJfkH6j5o73zgP3VtTclZXD8',
     authDomain:        'faculdade-368a4.firebaseapp.com',
@@ -169,10 +107,8 @@
   const db   = firebase.firestore();
   const auth = firebase.auth();
 
-  // ── Log helpers ────────────────────────────────────────────────────────────
   const logEl = document.getElementById('log');
   const progressBar = document.getElementById('progressBar');
-
   function log(msg, cls = 'log-info') {
     const span = document.createElement('span');
     span.className = cls;
@@ -185,339 +121,615 @@
 
   // ── Animation helpers ──────────────────────────────────────────────────────
   const KEYS = ['nose','lS','rS','lE','rE','lW','rW','lH','rH','lK','rK','lA','rA'];
-
-  // Base standing rest pose (MediaPipe normalized coords, person facing camera)
-  // x: 0=left edge, 1=right edge; person's LEFT body = higher x (right side of image)
-  // y: 0=top, 1=bottom
   const REST = {
-    nose: {x:.500, y:.120},
-    lS:   {x:.600, y:.300},   // person's left shoulder → right side of image
-    rS:   {x:.400, y:.300},
-    lE:   {x:.640, y:.460},
-    rE:   {x:.360, y:.460},
-    lW:   {x:.650, y:.600},
-    rW:   {x:.350, y:.600},
-    lH:   {x:.575, y:.560},
-    rH:   {x:.425, y:.560},
-    lK:   {x:.575, y:.730},
-    rK:   {x:.425, y:.730},
-    lA:   {x:.575, y:.890},
-    rA:   {x:.425, y:.890}
+    nose:{x:.500,y:.120}, lS:{x:.600,y:.300}, rS:{x:.400,y:.300},
+    lE:{x:.640,y:.460},   rE:{x:.360,y:.460},
+    lW:{x:.650,y:.600},   rW:{x:.350,y:.600},
+    lH:{x:.575,y:.560},   rH:{x:.425,y:.560},
+    lK:{x:.575,y:.730},   rK:{x:.425,y:.730},
+    lA:{x:.575,y:.890},   rA:{x:.425,y:.890}
   };
 
-  function lerp(a, b, t) { return a + (b - a) * t; }
-
-  function lerpPose(a, b, t) {
-    const out = {};
-    for (const k of KEYS) {
-      out[k] = {
-        x: Math.round(lerp(a[k].x, b[k].x, t) * 1000) / 1000,
-        y: Math.round(lerp(a[k].y, b[k].y, t) * 1000) / 1000
-      };
-    }
+  function lerp(a,b,t){ return a+(b-a)*t; }
+  function lerpPose(a,b,t){
+    const out={};
+    for(const k of KEYS) out[k]={
+      x:Math.round(lerp(a[k].x,b[k].x,t)*1000)/1000,
+      y:Math.round(lerp(a[k].y,b[k].y,t)*1000)/1000
+    };
     return out;
   }
-
-  // Generate 30-frame sine-wave animation: rest → peak → rest
-  function makeAnimFrames(peakOverrides, restOverrides = {}) {
-    const restPose = {};
-    const peakPose = {};
-    for (const k of KEYS) {
-      restPose[k] = restOverrides[k] || REST[k];
-    }
-    for (const k of KEYS) {
-      peakPose[k] = peakOverrides[k] || restPose[k];
-    }
-    const frames = [];
-    const N = 30;
-    for (let i = 0; i < N; i++) {
-      const t = Math.sin((i / (N - 1)) * Math.PI); // 0 → 1 → 0
-      frames.push(lerpPose(restPose, peakPose, t));
+  function makeAnimFrames(peakOverrides, restOverrides={}){
+    const restPose={}, peakPose={};
+    for(const k of KEYS){ restPose[k]=restOverrides[k]||REST[k]; }
+    for(const k of KEYS){ peakPose[k]=peakOverrides[k]||restPose[k]; }
+    const frames=[], N=30;
+    for(let i=0;i<N;i++){
+      const t=Math.sin((i/(N-1))*Math.PI);
+      frames.push(lerpPose(restPose,peakPose,t));
     }
     return frames;
   }
-
-  function makeMotionRange(animFrames) {
-    const mr = {};
-    for (const k of KEYS) {
-      const xs = animFrames.map(f => f[k]?.x).filter(v => v != null);
-      const ys = animFrames.map(f => f[k]?.y).filter(v => v != null);
-      if (xs.length < 2) { mr[k] = 0; continue; }
-      const rx = Math.max(...xs) - Math.min(...xs);
-      const ry = Math.max(...ys) - Math.min(...ys);
-      mr[k] = Math.round(Math.max(rx, ry) * 1000) / 1000;
+  function makeMotionRange(animFrames){
+    const mr={};
+    for(const k of KEYS){
+      const xs=animFrames.map(f=>f[k]?.x).filter(v=>v!=null);
+      const ys=animFrames.map(f=>f[k]?.y).filter(v=>v!=null);
+      if(xs.length<2){mr[k]=0;continue;}
+      mr[k]=Math.round(Math.max(Math.max(...xs)-Math.min(...xs),Math.max(...ys)-Math.min(...ys))*1000)/1000;
     }
     return mr;
   }
 
-  // ── Exercise definitions ───────────────────────────────────────────────────
-  // peakOverrides: only joints that MOVE from the rest position
-  // restOverrides: only needed when starting position differs from REST
+  // ── 70 Exercise definitions ────────────────────────────────────────────────
   const EXERCISE_DEFS = [
 
-    // 1 ── Rosca Direta (Biceps Curl) ─────────────────────────────────────────
+    // 1 ── Rosca Direta
     {
-      name: 'Rosca Direta',
-      peakOverrides: {
-        lE: {x:.633, y:.456},
-        rE: {x:.367, y:.456},
-        lW: {x:.608, y:.313},  // wrists rise to shoulder level
-        rW: {x:.392, y:.313}
-      },
-      angleTemplate: {leftElbow:165, rightElbow:165, leftKnee:170, rightKnee:170, leftHip:170, rightHip:170, trunkAngle:5},
-      peakAngles:    {leftElbow:45,  rightElbow:45,  leftKnee:170, rightKnee:170, leftHip:170, rightHip:170, trunkAngle:5}
+      name:'Rosca Direta',
+      peakOverrides:{lE:{x:.633,y:.456},rE:{x:.367,y:.456},lW:{x:.608,y:.313},rW:{x:.392,y:.313}},
+      angleTemplate:{leftElbow:165,rightElbow:165,leftKnee:170,rightKnee:170,leftHip:170,rightHip:170,trunkAngle:5},
+      peakAngles:   {leftElbow:45, rightElbow:45, leftKnee:170,rightKnee:170,leftHip:170,rightHip:170,trunkAngle:5}
     },
 
-    // 2 ── Elevação Lateral de Ombro (Lateral Raise) ───────────────────────────
+    // 2 ── Elevação Lateral de Ombro
     {
-      name: 'Elevação Lateral de Ombro',
-      peakOverrides: {
-        lE: {x:.775, y:.303},  // arms out to sides at shoulder height
-        rE: {x:.225, y:.303},
-        lW: {x:.858, y:.298},
-        rW: {x:.142, y:.298}
-      },
-      angleTemplate: {leftShoulder:30,  rightShoulder:30,  leftElbow:165, rightElbow:165, leftKnee:170, rightKnee:170, trunkAngle:5},
-      peakAngles:    {leftShoulder:88,  rightShoulder:88,  leftElbow:160, rightElbow:160, leftKnee:170, rightKnee:170, trunkAngle:5}
+      name:'Elevação Lateral de Ombro',
+      peakOverrides:{lE:{x:.775,y:.303},rE:{x:.225,y:.303},lW:{x:.858,y:.298},rW:{x:.142,y:.298}},
+      angleTemplate:{leftShoulder:30, rightShoulder:30, leftElbow:165,rightElbow:165,leftKnee:170,rightKnee:170,trunkAngle:5},
+      peakAngles:   {leftShoulder:88, rightShoulder:88, leftElbow:160,rightElbow:160,leftKnee:170,rightKnee:170,trunkAngle:5}
     },
 
-    // 3 ── Elevação Frontal (Front Raise) ──────────────────────────────────────
+    // 3 ── Elevação Frontal de Ombro
     {
-      name: 'Elevação Frontal de Ombro',
-      peakOverrides: {
-        lE: {x:.606, y:.264},  // elbows rise
-        rE: {x:.394, y:.264},
-        lW: {x:.590, y:.168},  // wrists at forehead level
-        rW: {x:.410, y:.168}
-      },
-      angleTemplate: {leftShoulder:30,  rightShoulder:30,  leftElbow:165, rightElbow:165, leftKnee:170, rightKnee:170, trunkAngle:5},
-      peakAngles:    {leftShoulder:90,  rightShoulder:90,  leftElbow:155, rightElbow:155, leftKnee:170, rightKnee:170, trunkAngle:5}
+      name:'Elevação Frontal de Ombro',
+      peakOverrides:{lE:{x:.606,y:.264},rE:{x:.394,y:.264},lW:{x:.590,y:.168},rW:{x:.410,y:.168}},
+      angleTemplate:{leftShoulder:30, rightShoulder:30, leftElbow:165,rightElbow:165,leftKnee:170,rightKnee:170,trunkAngle:5},
+      peakAngles:   {leftShoulder:90, rightShoulder:90, leftElbow:155,rightElbow:155,leftKnee:170,rightKnee:170,trunkAngle:5}
     },
 
-    // 4 ── Extensão de Tríceps Acima da Cabeça ─────────────────────────────────
+    // 4 ── Extensão de Tríceps
     {
-      name: 'Extensão de Tríceps',
-      peakOverrides: {
-        lE: {x:.579, y:.128},  // elbows overhead
-        rE: {x:.421, y:.128},
-        lW: {x:.574, y:.247},  // wrists behind head (arms bent = tricep stretch)
-        rW: {x:.426, y:.247}
-      },
-      angleTemplate: {leftElbow:165, rightElbow:165, leftShoulder:30, rightShoulder:30, leftKnee:170, rightKnee:170, trunkAngle:5},
-      peakAngles:    {leftElbow:80,  rightElbow:80,  leftShoulder:165, rightShoulder:165, leftKnee:170, rightKnee:170, trunkAngle:5}
+      name:'Extensão de Tríceps',
+      peakOverrides:{lE:{x:.579,y:.128},rE:{x:.421,y:.128},lW:{x:.574,y:.247},rW:{x:.426,y:.247}},
+      angleTemplate:{leftElbow:165,rightElbow:165,leftShoulder:30,rightShoulder:30,leftKnee:170,rightKnee:170,trunkAngle:5},
+      peakAngles:   {leftElbow:80, rightElbow:80, leftShoulder:165,rightShoulder:165,leftKnee:170,rightKnee:170,trunkAngle:5}
     },
 
-    // 5 ── Agachamento Sumô (Sumo Squat) ──────────────────────────────────────
+    // 5 ── Agachamento Sumô
     {
-      name: 'Agachamento Sumô',
-      restOverrides: {
-        lH: {x:.590, y:.558},  rH: {x:.410, y:.558},
-        lK: {x:.648, y:.728},  rK: {x:.352, y:.728},
-        lA: {x:.678, y:.888},  rA: {x:.322, y:.888}
-      },
-      peakOverrides: {
-        nose: {x:.500, y:.268},
-        lS:   {x:.612, y:.432},  rS:  {x:.388, y:.432},
-        lE:   {x:.648, y:.580},  rE:  {x:.352, y:.580},
-        lW:   {x:.646, y:.668},  rW:  {x:.354, y:.668},
-        lH:   {x:.632, y:.670},  rH:  {x:.368, y:.670},
-        lK:   {x:.718, y:.800},  rK:  {x:.282, y:.800},
-        lA:   {x:.685, y:.916},  rA:  {x:.315, y:.916}
-      },
-      angleTemplate: {leftKnee:170, rightKnee:170, leftHip:170, rightHip:170, trunkAngle:5},
-      peakAngles:    {leftKnee:88,  rightKnee:88,  leftHip:85,  rightHip:85,  trunkAngle:8}
+      name:'Agachamento Sumô',
+      restOverrides:{lH:{x:.590,y:.558},rH:{x:.410,y:.558},lK:{x:.648,y:.728},rK:{x:.352,y:.728},lA:{x:.678,y:.888},rA:{x:.322,y:.888}},
+      peakOverrides:{nose:{x:.500,y:.268},lS:{x:.612,y:.432},rS:{x:.388,y:.432},lE:{x:.648,y:.580},rE:{x:.352,y:.580},lW:{x:.646,y:.668},rW:{x:.354,y:.668},lH:{x:.632,y:.670},rH:{x:.368,y:.670},lK:{x:.718,y:.800},rK:{x:.282,y:.800},lA:{x:.685,y:.916},rA:{x:.315,y:.916}},
+      angleTemplate:{leftKnee:170,rightKnee:170,leftHip:170,rightHip:170,trunkAngle:5},
+      peakAngles:   {leftKnee:88, rightKnee:88, leftHip:85, rightHip:85, trunkAngle:8}
     },
 
-    // 6 ── Marcha Estacionária (Stationary March) ──────────────────────────────
+    // 6 ── Marcha Estacionária
     {
-      name: 'Marcha Estacionária',
-      peakOverrides: {
-        lK: {x:.554, y:.518},  // left knee comes up
-        lA: {x:.545, y:.632},  // left ankle follows
-        lE: {x:.655, y:.504},  lW: {x:.671, y:.650},  // left arm swings back
-        rE: {x:.338, y:.398},  rW: {x:.363, y:.520}   // right arm swings forward
-      },
-      angleTemplate: {leftKnee:170, rightKnee:170, leftHip:170, rightHip:170, trunkAngle:5},
-      peakAngles:    {leftKnee:80,  rightKnee:170, leftHip:100, rightHip:170, trunkAngle:5}
+      name:'Marcha Estacionária',
+      peakOverrides:{lK:{x:.554,y:.518},lA:{x:.545,y:.632},lE:{x:.655,y:.504},lW:{x:.671,y:.650},rE:{x:.338,y:.398},rW:{x:.363,y:.520}},
+      angleTemplate:{leftKnee:170,rightKnee:170,leftHip:170,rightHip:170,trunkAngle:5},
+      peakAngles:   {leftKnee:80, rightKnee:170,leftHip:100,rightHip:170,trunkAngle:5}
     },
 
-    // 7 ── Abdução de Quadril em Pé (Standing Hip Abduction) ──────────────────
+    // 7 ── Abdução de Quadril
     {
-      name: 'Abdução de Quadril',
-      peakOverrides: {
-        nose: {x:.521, y:.121},  // slight lean right for balance
-        lS:   {x:.616, y:.301},  rS: {x:.416, y:.301},
-        lH:   {x:.600, y:.556},
-        lK:   {x:.702, y:.728},  // left knee lifts out to side
-        lA:   {x:.752, y:.872}   // left ankle follows out
-      },
-      angleTemplate: {leftKnee:170, rightKnee:170, leftHip:170, rightHip:170, trunkAngle:5},
-      peakAngles:    {leftKnee:170, rightKnee:170, leftHip:145, rightHip:170, trunkAngle:6}
+      name:'Abdução de Quadril',
+      peakOverrides:{nose:{x:.521,y:.121},lS:{x:.616,y:.301},rS:{x:.416,y:.301},lH:{x:.600,y:.556},lK:{x:.702,y:.728},lA:{x:.752,y:.872}},
+      angleTemplate:{leftKnee:170,rightKnee:170,leftHip:170,rightHip:170,trunkAngle:5},
+      peakAngles:   {leftKnee:170,rightKnee:170,leftHip:145,rightHip:170,trunkAngle:6}
     },
 
-    // 8 ── Elevação de Panturrilha (Calf Raise) ────────────────────────────────
+    // 8 ── Elevação de Panturrilha
     {
-      name: 'Elevação de Panturrilha',
-      peakOverrides: {
-        nose: {x:.500, y:.093},  // whole body rises ~2.7%
-        lS:   {x:.600, y:.274},  rS:  {x:.400, y:.274},
-        lE:   {x:.640, y:.433},  rE:  {x:.360, y:.433},
-        lW:   {x:.650, y:.573},  rW:  {x:.350, y:.573},
-        lH:   {x:.575, y:.533},  rH:  {x:.425, y:.533},
-        lK:   {x:.575, y:.703},  rK:  {x:.425, y:.703},
-        lA:   {x:.575, y:.863},  rA:  {x:.425, y:.863}
-      },
-      angleTemplate: {leftKnee:170, rightKnee:170, leftAnkle:5, rightAnkle:5, trunkAngle:5},
-      peakAngles:    {leftKnee:170, rightKnee:170, leftAnkle:30, rightAnkle:30, trunkAngle:5}
+      name:'Elevação de Panturrilha',
+      peakOverrides:{nose:{x:.500,y:.093},lS:{x:.600,y:.274},rS:{x:.400,y:.274},lE:{x:.640,y:.433},rE:{x:.360,y:.433},lW:{x:.650,y:.573},rW:{x:.350,y:.573},lH:{x:.575,y:.533},rH:{x:.425,y:.533},lK:{x:.575,y:.703},rK:{x:.425,y:.703},lA:{x:.575,y:.863},rA:{x:.425,y:.863}},
+      angleTemplate:{leftKnee:170,rightKnee:170,leftAnkle:5, rightAnkle:5, trunkAngle:5},
+      peakAngles:   {leftKnee:170,rightKnee:170,leftAnkle:30,rightAnkle:30,trunkAngle:5}
     },
 
-    // 9 ── Avanço Lateral (Lateral Lunge) – right leg ─────────────────────────
+    // 9 ── Avanço Lateral
     {
-      name: 'Avanço Lateral',
-      peakOverrides: {
-        nose: {x:.520, y:.132},
-        lS:   {x:.617, y:.307},  rS:  {x:.417, y:.307},
-        lH:   {x:.582, y:.572},  rH:  {x:.388, y:.582},
-        rK:   {x:.293, y:.793},  // right knee bends deep out to side
-        rA:   {x:.248, y:.902},  // right ankle extends far out to the right
-        lK:   {x:.578, y:.730},  // left leg stays straight
-        lA:   {x:.578, y:.893}
-      },
-      angleTemplate: {leftKnee:170, rightKnee:170, leftHip:170, rightHip:170, trunkAngle:5},
-      peakAngles:    {leftKnee:170, rightKnee:90,  leftHip:170, rightHip:85,  trunkAngle:7}
+      name:'Avanço Lateral',
+      peakOverrides:{nose:{x:.520,y:.132},lS:{x:.617,y:.307},rS:{x:.417,y:.307},lH:{x:.582,y:.572},rH:{x:.388,y:.582},rK:{x:.293,y:.793},rA:{x:.248,y:.902},lK:{x:.578,y:.730},lA:{x:.578,y:.893}},
+      angleTemplate:{leftKnee:170,rightKnee:170,leftHip:170,rightHip:170,trunkAngle:5},
+      peakAngles:   {leftKnee:170,rightKnee:90, leftHip:170,rightHip:85, trunkAngle:7}
     },
 
-    // 10 ── Pressão de Ombros (Shoulder Press) ────────────────────────────────
+    // 10 ── Pressão de Ombros
     {
-      name: 'Pressão de Ombros',
-      peakOverrides: {
-        lE: {x:.624, y:.173},  // elbows rise above head
-        rE: {x:.376, y:.173},
-        lW: {x:.614, y:.074},  // wrists fully extended overhead
-        rW: {x:.386, y:.074}
-      },
-      angleTemplate: {leftElbow:90, rightElbow:90, leftShoulder:80,  rightShoulder:80,  leftKnee:170, rightKnee:170, trunkAngle:5},
-      peakAngles:    {leftElbow:170, rightElbow:170, leftShoulder:165, rightShoulder:165, leftKnee:170, rightKnee:170, trunkAngle:5}
+      name:'Pressão de Ombros',
+      peakOverrides:{lE:{x:.624,y:.173},rE:{x:.376,y:.173},lW:{x:.614,y:.074},rW:{x:.386,y:.074}},
+      angleTemplate:{leftElbow:90, rightElbow:90, leftShoulder:80, rightShoulder:80, leftKnee:170,rightKnee:170,trunkAngle:5},
+      peakAngles:   {leftElbow:170,rightElbow:170,leftShoulder:165,rightShoulder:165,leftKnee:170,rightKnee:170,trunkAngle:5}
     },
 
-    // 11 ── Cruzamento de Braços (Arm Crossover) ──────────────────────────────
+    // 11 ── Cruzamento de Braços
     {
-      name: 'Cruzamento de Braços',
-      peakOverrides: {
-        lE: {x:.438, y:.380},  // left arm crosses to right side of body
-        lW: {x:.353, y:.372},
-        rE: {x:.562, y:.380},  // right arm crosses to left side of body
-        rW: {x:.648, y:.372}
-      },
-      angleTemplate: {leftShoulder:30, rightShoulder:30, leftElbow:165, rightElbow:165, leftKnee:170, rightKnee:170, trunkAngle:5},
-      peakAngles:    {leftShoulder:80, rightShoulder:80, leftElbow:155, rightElbow:155, leftKnee:170, rightKnee:170, trunkAngle:5}
+      name:'Cruzamento de Braços',
+      peakOverrides:{lE:{x:.438,y:.380},lW:{x:.353,y:.372},rE:{x:.562,y:.380},rW:{x:.648,y:.372}},
+      angleTemplate:{leftShoulder:30,rightShoulder:30,leftElbow:165,rightElbow:165,leftKnee:170,rightKnee:170,trunkAngle:5},
+      peakAngles:   {leftShoulder:80,rightShoulder:80,leftElbow:155,rightElbow:155,leftKnee:170,rightKnee:170,trunkAngle:5}
     },
 
-    // 12 ── Joelho ao Peito (Knee to Chest) – right ───────────────────────────
+    // 12 ── Joelho ao Peito
     {
-      name: 'Joelho ao Peito',
-      peakOverrides: {
-        rK: {x:.425, y:.508},  // right knee pulls way up
-        rA: {x:.429, y:.628},
-        rW: {x:.428, y:.520},  // both hands reach for knee
-        lW: {x:.418, y:.534}
-      },
-      angleTemplate: {leftKnee:170, rightKnee:170, leftHip:170, rightHip:170, trunkAngle:5},
-      peakAngles:    {leftKnee:170, rightKnee:70,  leftHip:170, rightHip:90,  trunkAngle:5}
+      name:'Joelho ao Peito',
+      peakOverrides:{rK:{x:.425,y:.508},rA:{x:.429,y:.628},rW:{x:.428,y:.520},lW:{x:.418,y:.534}},
+      angleTemplate:{leftKnee:170,rightKnee:170,leftHip:170,rightHip:170,trunkAngle:5},
+      peakAngles:   {leftKnee:170,rightKnee:70, leftHip:170,rightHip:90, trunkAngle:5}
     },
 
-    // 13 ── Flexão Lateral de Tronco (Lateral Trunk Flexion) – left ───────────
+    // 13 ── Flexão Lateral de Tronco
     {
-      name: 'Flexão Lateral de Tronco',
-      peakOverrides: {
-        nose: {x:.557, y:.147},
-        lS:   {x:.665, y:.312},  rS:  {x:.454, y:.279},  // right rises, left drops
-        lH:   {x:.642, y:.566},  rH:  {x:.481, y:.547},
-        lE:   {x:.702, y:.477},  lW:  {x:.742, y:.582},  // left arm slides down
-        rE:   {x:.454, y:.238},  rW:  {x:.439, y:.163}   // right arm arcs overhead
-      },
-      angleTemplate: {leftKnee:170, rightKnee:170, leftHip:170, rightHip:170, trunkAngle:5},
-      peakAngles:    {leftKnee:170, rightKnee:170, leftHip:170, rightHip:170, trunkAngle:35}
+      name:'Flexão Lateral de Tronco',
+      peakOverrides:{nose:{x:.557,y:.147},lS:{x:.665,y:.312},rS:{x:.454,y:.279},lH:{x:.642,y:.566},rH:{x:.481,y:.547},lE:{x:.702,y:.477},lW:{x:.742,y:.582},rE:{x:.454,y:.238},rW:{x:.439,y:.163}},
+      angleTemplate:{leftKnee:170,rightKnee:170,leftHip:170,rightHip:170,trunkAngle:5},
+      peakAngles:   {leftKnee:170,rightKnee:170,leftHip:170,rightHip:170,trunkAngle:35}
     },
 
-    // 14 ── Chute Frontal (Front Kick) – right leg ────────────────────────────
+    // 14 ── Chute Frontal
     {
-      name: 'Chute Frontal',
-      peakOverrides: {
-        nose: {x:.504, y:.131},  // slight lean back
-        rK:   {x:.425, y:.575},  // right knee comes way up
-        rA:   {x:.420, y:.478},  // right ankle extends forward/up
-        lE:   {x:.645, y:.455},  rE: {x:.355, y:.428}   // arms slightly out for balance
-      },
-      angleTemplate: {leftKnee:170, rightKnee:170, leftHip:170, rightHip:170, trunkAngle:5},
-      peakAngles:    {leftKnee:170, rightKnee:40,  leftHip:170, rightHip:105, trunkAngle:10}
+      name:'Chute Frontal',
+      peakOverrides:{nose:{x:.504,y:.131},rK:{x:.425,y:.575},rA:{x:.420,y:.478},lE:{x:.645,y:.455},rE:{x:.355,y:.428}},
+      angleTemplate:{leftKnee:170,rightKnee:170,leftHip:170,rightHip:170,trunkAngle:5},
+      peakAngles:   {leftKnee:170,rightKnee:40, leftHip:170,rightHip:105,trunkAngle:10}
     },
 
-    // 15 ── Rotação de Tronco (Trunk Rotation) ────────────────────────────────
+    // 15 ── Rotação de Tronco
     {
-      name: 'Rotação de Tronco',
-      peakOverrides: {
-        // rotate to the right: right shoulder comes toward camera center
-        lS: {x:.625, y:.316},  rS:  {x:.444, y:.316},
-        lE: {x:.688, y:.432},  rE:  {x:.308, y:.429},
-        lW: {x:.722, y:.418},  rW:  {x:.258, y:.452}
-      },
-      angleTemplate: {leftKnee:170, rightKnee:170, leftHip:170, rightHip:170, trunkAngle:5},
-      peakAngles:    {leftKnee:170, rightKnee:170, leftHip:170, rightHip:170, trunkAngle:40}
+      name:'Rotação de Tronco',
+      peakOverrides:{lS:{x:.625,y:.316},rS:{x:.444,y:.316},lE:{x:.688,y:.432},rE:{x:.308,y:.429},lW:{x:.722,y:.418},rW:{x:.258,y:.452}},
+      angleTemplate:{leftKnee:170,rightKnee:170,leftHip:170,rightHip:170,trunkAngle:5},
+      peakAngles:   {leftKnee:170,rightKnee:170,leftHip:170,rightHip:170,trunkAngle:40}
     },
 
-    // 16 ── Levantamento Terra (Romanian Deadlift) ─────────────────────────────
+    // 16 ── Levantamento Terra
     {
-      name: 'Levantamento Terra',
-      peakOverrides: {
-        nose: {x:.500, y:.252},
-        lS:   {x:.612, y:.398},  rS:  {x:.388, y:.398},  // shoulders drop
-        lE:   {x:.622, y:.522},  rE:  {x:.378, y:.522},
-        lW:   {x:.612, y:.652},  rW:  {x:.388, y:.652},  // hands hang lower
-        lH:   {x:.582, y:.612},  rH:  {x:.418, y:.612},  // hips push back/down
-        lK:   {x:.582, y:.748},  rK:  {x:.418, y:.748}   // slight knee bend
-      },
-      angleTemplate: {leftKnee:170, rightKnee:170, leftHip:170, rightHip:170, trunkAngle:5},
-      peakAngles:    {leftKnee:160, rightKnee:160, leftHip:105, rightHip:105, trunkAngle:40}
+      name:'Levantamento Terra',
+      peakOverrides:{nose:{x:.500,y:.252},lS:{x:.612,y:.398},rS:{x:.388,y:.398},lE:{x:.622,y:.522},rE:{x:.378,y:.522},lW:{x:.612,y:.652},rW:{x:.388,y:.652},lH:{x:.582,y:.612},rH:{x:.418,y:.612},lK:{x:.582,y:.748},rK:{x:.418,y:.748}},
+      angleTemplate:{leftKnee:170,rightKnee:170,leftHip:170,rightHip:170,trunkAngle:5},
+      peakAngles:   {leftKnee:160,rightKnee:160,leftHip:105,rightHip:105,trunkAngle:40}
     },
 
-    // 17 ── Agachamento com Salto (Jump Squat) ────────────────────────────────
+    // 17 ── Agachamento com Salto
     {
-      name: 'Agachamento com Salto',
-      peakOverrides: {
-        nose: {x:.500, y:.252},
-        lS:   {x:.606, y:.422},  rS:  {x:.394, y:.422},
-        lE:   {x:.662, y:.572},  rE:  {x:.338, y:.572},  // arms swing down for momentum
-        lW:   {x:.681, y:.672},  rW:  {x:.319, y:.672},
-        lH:   {x:.601, y:.662},  rH:  {x:.399, y:.662},
-        lK:   {x:.636, y:.802},  rK:  {x:.364, y:.802},
-        lA:   {x:.596, y:.912},  rA:  {x:.404, y:.912}
-      },
-      angleTemplate: {leftKnee:170, rightKnee:170, leftHip:170, rightHip:170, trunkAngle:5},
-      peakAngles:    {leftKnee:85,  rightKnee:85,  leftHip:82,  rightHip:82,  trunkAngle:10}
+      name:'Agachamento com Salto',
+      peakOverrides:{nose:{x:.500,y:.252},lS:{x:.606,y:.422},rS:{x:.394,y:.422},lE:{x:.662,y:.572},rE:{x:.338,y:.572},lW:{x:.681,y:.672},rW:{x:.319,y:.672},lH:{x:.601,y:.662},rH:{x:.399,y:.662},lK:{x:.636,y:.802},rK:{x:.364,y:.802},lA:{x:.596,y:.912},rA:{x:.404,y:.912}},
+      angleTemplate:{leftKnee:170,rightKnee:170,leftHip:170,rightHip:170,trunkAngle:5},
+      peakAngles:   {leftKnee:85, rightKnee:85, leftHip:82, rightHip:82, trunkAngle:10}
     },
 
-    // 18 ── Polichinelo Agachado (Squat Jack) ─────────────────────────────────
+    // 18 ── Polichinelo Agachado
     {
-      name: 'Polichinelo Agachado',
-      peakOverrides: {
-        nose: {x:.500, y:.258},
-        lS:   {x:.616, y:.422},  rS:  {x:.384, y:.422},
-        lE:   {x:.756, y:.322},  rE:  {x:.244, y:.322},  // arms wide and up
-        lW:   {x:.822, y:.212},  rW:  {x:.178, y:.212},
-        lH:   {x:.636, y:.662},  rH:  {x:.364, y:.662},
-        lK:   {x:.692, y:.806},  rK:  {x:.308, y:.806},
-        lA:   {x:.661, y:.924},  rA:  {x:.339, y:.924}
-      },
-      angleTemplate: {leftKnee:170, rightKnee:170, leftHip:170, rightHip:170, leftShoulder:30, rightShoulder:30, trunkAngle:5},
-      peakAngles:    {leftKnee:90,  rightKnee:90,  leftHip:88,  rightHip:88,  leftShoulder:90, rightShoulder:90, trunkAngle:8}
+      name:'Polichinelo Agachado',
+      peakOverrides:{nose:{x:.500,y:.258},lS:{x:.616,y:.422},rS:{x:.384,y:.422},lE:{x:.756,y:.322},rE:{x:.244,y:.322},lW:{x:.822,y:.212},rW:{x:.178,y:.212},lH:{x:.636,y:.662},rH:{x:.364,y:.662},lK:{x:.692,y:.806},rK:{x:.308,y:.806},lA:{x:.661,y:.924},rA:{x:.339,y:.924}},
+      angleTemplate:{leftKnee:170,rightKnee:170,leftHip:170,rightHip:170,leftShoulder:30,rightShoulder:30,trunkAngle:5},
+      peakAngles:   {leftKnee:90, rightKnee:90, leftHip:88, rightHip:88, leftShoulder:90,rightShoulder:90,trunkAngle:8}
+    },
+
+    // 19 ── Agachamento Livre
+    {
+      name:'Agachamento Livre',
+      peakOverrides:{nose:{x:.500,y:.240},lS:{x:.606,y:.410},rS:{x:.394,y:.410},lE:{x:.646,y:.560},rE:{x:.354,y:.560},lW:{x:.656,y:.680},rW:{x:.344,y:.680},lH:{x:.590,y:.630},rH:{x:.410,y:.630},lK:{x:.606,y:.780},rK:{x:.394,y:.780},lA:{x:.580,y:.902},rA:{x:.420,y:.902}},
+      angleTemplate:{leftKnee:170,rightKnee:170,leftHip:170,rightHip:170,trunkAngle:5},
+      peakAngles:   {leftKnee:90, rightKnee:90, leftHip:88, rightHip:88, trunkAngle:15}
+    },
+
+    // 20 ── Avanço Frontal
+    {
+      name:'Avanço Frontal',
+      peakOverrides:{nose:{x:.504,y:.125},rK:{x:.390,y:.680},rA:{x:.360,y:.820},lK:{x:.578,y:.762},lA:{x:.575,y:.910},rH:{x:.400,y:.548}},
+      angleTemplate:{leftKnee:170,rightKnee:170,leftHip:170,rightHip:170,trunkAngle:5},
+      peakAngles:   {leftKnee:95, rightKnee:90, leftHip:160,rightHip:90, trunkAngle:5}
+    },
+
+    // 21 ── Avanço Reverso
+    {
+      name:'Avanço Reverso',
+      peakOverrides:{nose:{x:.500,y:.120},rK:{x:.405,y:.780},rA:{x:.415,y:.910},lK:{x:.565,y:.660},lH:{x:.570,y:.548}},
+      angleTemplate:{leftKnee:170,rightKnee:170,leftHip:170,rightHip:170,trunkAngle:5},
+      peakAngles:   {leftKnee:90, rightKnee:90, leftHip:85, rightHip:160,trunkAngle:5}
+    },
+
+    // 22 ── Extensão de Quadril
+    {
+      name:'Extensão de Quadril',
+      peakOverrides:{rK:{x:.425,y:.785},rA:{x:.430,y:.958},nose:{x:.502,y:.122}},
+      angleTemplate:{leftKnee:170,rightKnee:170,leftHip:170,rightHip:170,trunkAngle:5},
+      peakAngles:   {leftKnee:170,rightKnee:165,leftHip:170,rightHip:145,trunkAngle:5}
+    },
+
+    // 23 ── Adução de Quadril
+    {
+      name:'Adução de Quadril',
+      peakOverrides:{lK:{x:.488,y:.730},lA:{x:.458,y:.890}},
+      angleTemplate:{leftKnee:170,rightKnee:170,leftHip:170,rightHip:170,trunkAngle:5},
+      peakAngles:   {leftKnee:170,rightKnee:170,leftHip:165,rightHip:170,trunkAngle:5}
+    },
+
+    // 24 ── Leg Curl em Pé
+    {
+      name:'Leg Curl em Pé',
+      peakOverrides:{rK:{x:.425,y:.668},rA:{x:.425,y:.570}},
+      angleTemplate:{leftKnee:170,rightKnee:170,leftHip:170,rightHip:170,trunkAngle:5},
+      peakAngles:   {leftKnee:170,rightKnee:55, leftHip:170,rightHip:170,trunkAngle:5}
+    },
+
+    // 25 ── Stiff
+    {
+      name:'Stiff',
+      peakOverrides:{nose:{x:.500,y:.268},lS:{x:.614,y:.402},rS:{x:.386,y:.402},lE:{x:.624,y:.528},rE:{x:.376,y:.528},lW:{x:.614,y:.668},rW:{x:.386,y:.668},lH:{x:.586,y:.624},rH:{x:.414,y:.624}},
+      angleTemplate:{leftKnee:170,rightKnee:170,leftHip:170,rightHip:170,trunkAngle:5},
+      peakAngles:   {leftKnee:168,rightKnee:168,leftHip:100,rightHip:100,trunkAngle:45}
+    },
+
+    // 26 ── Step Lateral
+    {
+      name:'Step Lateral',
+      peakOverrides:{lA:{x:.710,y:.892},lK:{x:.695,y:.732},lH:{x:.620,y:.564},rA:{x:.478,y:.892}},
+      angleTemplate:{leftKnee:170,rightKnee:170,leftHip:170,rightHip:170,trunkAngle:5},
+      peakAngles:   {leftKnee:168,rightKnee:168,leftHip:168,rightHip:168,trunkAngle:5}
+    },
+
+    // 27 ── Corrida Estacionária
+    {
+      name:'Corrida Estacionária',
+      peakOverrides:{lK:{x:.556,y:.490},lA:{x:.548,y:.610},rE:{x:.335,y:.375},rW:{x:.358,y:.498},lE:{x:.658,y:.508},lW:{x:.674,y:.658}},
+      angleTemplate:{leftKnee:170,rightKnee:170,leftHip:170,rightHip:170,trunkAngle:5},
+      peakAngles:   {leftKnee:75, rightKnee:170,leftHip:105,rightHip:170,trunkAngle:5}
+    },
+
+    // 28 ── Chute Lateral
+    {
+      name:'Chute Lateral',
+      peakOverrides:{lK:{x:.700,y:.690},lA:{x:.780,y:.692},lH:{x:.590,y:.545}},
+      angleTemplate:{leftKnee:170,rightKnee:170,leftHip:170,rightHip:170,trunkAngle:5},
+      peakAngles:   {leftKnee:145,rightKnee:170,leftHip:140,rightHip:170,trunkAngle:6}
+    },
+
+    // 29 ── Chute Traseiro
+    {
+      name:'Chute Traseiro',
+      peakOverrides:{rK:{x:.425,y:.760},rA:{x:.440,y:.940},nose:{x:.500,y:.122}},
+      angleTemplate:{leftKnee:170,rightKnee:170,leftHip:170,rightHip:170,trunkAngle:5},
+      peakAngles:   {leftKnee:170,rightKnee:150,leftHip:170,rightHip:145,trunkAngle:8}
+    },
+
+    // 30 ── Polichinelo
+    {
+      name:'Polichinelo',
+      peakOverrides:{lE:{x:.772,y:.297},rE:{x:.228,y:.297},lW:{x:.848,y:.202},rW:{x:.152,y:.202},lA:{x:.640,y:.892},rA:{x:.360,y:.892},lK:{x:.635,y:.732},rK:{x:.365,y:.732},lH:{x:.615,y:.558},rH:{x:.385,y:.558}},
+      angleTemplate:{leftShoulder:30,rightShoulder:30,leftKnee:170,rightKnee:170,trunkAngle:5},
+      peakAngles:   {leftShoulder:90,rightShoulder:90,leftKnee:170,rightKnee:170,trunkAngle:5}
+    },
+
+    // 31 ── Skipping
+    {
+      name:'Skipping',
+      peakOverrides:{lK:{x:.558,y:.510},lA:{x:.550,y:.625},rE:{x:.337,y:.378},rW:{x:.360,y:.502},lE:{x:.656,y:.506},lW:{x:.672,y:.652}},
+      angleTemplate:{leftKnee:170,rightKnee:170,leftHip:170,rightHip:170,trunkAngle:5},
+      peakAngles:   {leftKnee:78, rightKnee:170,leftHip:103,rightHip:170,trunkAngle:5}
+    },
+
+    // 32 ── Rosca Alternada
+    {
+      name:'Rosca Alternada',
+      peakOverrides:{lW:{x:.614,y:.316},lE:{x:.636,y:.458}},
+      angleTemplate:{leftElbow:165,rightElbow:165,leftKnee:170,rightKnee:170,trunkAngle:5},
+      peakAngles:   {leftElbow:48, rightElbow:165,leftKnee:170,rightKnee:170,trunkAngle:5}
+    },
+
+    // 33 ── Rosca Martelo
+    {
+      name:'Rosca Martelo',
+      peakOverrides:{lW:{x:.618,y:.318},rW:{x:.382,y:.318}},
+      angleTemplate:{leftElbow:165,rightElbow:165,leftKnee:170,rightKnee:170,trunkAngle:5},
+      peakAngles:   {leftElbow:50, rightElbow:50, leftKnee:170,rightKnee:170,trunkAngle:5}
+    },
+
+    // 34 ── Rosca Concentrada
+    {
+      name:'Rosca Concentrada',
+      peakOverrides:{rW:{x:.390,y:.290},rE:{x:.363,y:.454}},
+      angleTemplate:{leftElbow:165,rightElbow:165,leftKnee:170,rightKnee:170,trunkAngle:5},
+      peakAngles:   {leftElbow:165,rightElbow:42, leftKnee:170,rightKnee:170,trunkAngle:5}
+    },
+
+    // 35 ── Remada Alta
+    {
+      name:'Remada Alta',
+      peakOverrides:{lE:{x:.598,y:.232},rE:{x:.402,y:.232},lW:{x:.580,y:.248},rW:{x:.420,y:.248}},
+      angleTemplate:{leftShoulder:30,rightShoulder:30,leftElbow:165,rightElbow:165,leftKnee:170,rightKnee:170,trunkAngle:5},
+      peakAngles:   {leftShoulder:80,rightShoulder:80,leftElbow:85, rightElbow:85, leftKnee:170,rightKnee:170,trunkAngle:5}
+    },
+
+    // 36 ── Pullover de Ombro
+    {
+      name:'Pullover de Ombro',
+      peakOverrides:{lE:{x:.600,y:.148},rE:{x:.400,y:.148},lW:{x:.595,y:.074},rW:{x:.405,y:.074}},
+      angleTemplate:{leftShoulder:30,rightShoulder:30,leftElbow:165,rightElbow:165,leftKnee:170,rightKnee:170,trunkAngle:5},
+      peakAngles:   {leftShoulder:145,rightShoulder:145,leftElbow:155,rightElbow:155,leftKnee:170,rightKnee:170,trunkAngle:5}
+    },
+
+    // 37 ── Arnold Press
+    {
+      name:'Arnold Press',
+      peakOverrides:{lE:{x:.622,y:.175},rE:{x:.378,y:.175},lW:{x:.612,y:.076},rW:{x:.388,y:.076}},
+      angleTemplate:{leftElbow:90, rightElbow:90, leftShoulder:60, rightShoulder:60, leftKnee:170,rightKnee:170,trunkAngle:5},
+      peakAngles:   {leftElbow:168,rightElbow:168,leftShoulder:162,rightShoulder:162,leftKnee:170,rightKnee:170,trunkAngle:5}
+    },
+
+    // 38 ── Desenvolvimento com Halteres
+    {
+      name:'Desenvolvimento com Halteres',
+      peakOverrides:{lE:{x:.621,y:.176},rE:{x:.379,y:.176},lW:{x:.611,y:.078},rW:{x:.389,y:.078}},
+      angleTemplate:{leftElbow:90, rightElbow:90, leftShoulder:70, rightShoulder:70, leftKnee:170,rightKnee:170,trunkAngle:5},
+      peakAngles:   {leftElbow:166,rightElbow:166,leftShoulder:160,rightShoulder:160,leftKnee:170,rightKnee:170,trunkAngle:5}
+    },
+
+    // 39 ── Voador em Pé
+    {
+      name:'Voador em Pé',
+      peakOverrides:{lE:{x:.762,y:.308},rE:{x:.238,y:.308},lW:{x:.842,y:.306},rW:{x:.158,y:.306}},
+      angleTemplate:{leftShoulder:30,rightShoulder:30,leftElbow:165,rightElbow:165,leftKnee:170,rightKnee:170,trunkAngle:5},
+      peakAngles:   {leftShoulder:85,rightShoulder:85,leftElbow:162,rightElbow:162,leftKnee:170,rightKnee:170,trunkAngle:5}
+    },
+
+    // 40 ── Remada Curvada
+    {
+      name:'Remada Curvada',
+      peakOverrides:{nose:{x:.500,y:.248},lS:{x:.614,y:.396},rS:{x:.386,y:.396},lE:{x:.615,y:.396},rE:{x:.385,y:.396},lW:{x:.598,y:.504},rW:{x:.402,y:.504},lH:{x:.582,y:.608},rH:{x:.418,y:.608}},
+      angleTemplate:{leftElbow:165,rightElbow:165,leftShoulder:30,rightShoulder:30,leftKnee:168,rightKnee:168,trunkAngle:40},
+      peakAngles:   {leftElbow:90, rightElbow:90, leftShoulder:30,rightShoulder:30,leftKnee:168,rightKnee:168,trunkAngle:40}
+    },
+
+    // 41 ── Kickback de Tríceps
+    {
+      name:'Kickback de Tríceps',
+      peakOverrides:{nose:{x:.500,y:.218},lS:{x:.606,y:.384},rS:{x:.394,y:.384},lE:{x:.640,y:.390},rE:{x:.360,y:.390},lW:{x:.660,y:.418},rW:{x:.340,y:.418},lH:{x:.580,y:.584},rH:{x:.420,y:.584}},
+      angleTemplate:{leftElbow:90, rightElbow:90, leftShoulder:20,rightShoulder:20,leftKnee:168,rightKnee:168,trunkAngle:35},
+      peakAngles:   {leftElbow:168,rightElbow:168,leftShoulder:20,rightShoulder:20,leftKnee:168,rightKnee:168,trunkAngle:35}
+    },
+
+    // 42 ── Press de Tríceps Unilateral
+    {
+      name:'Press de Tríceps Unilateral',
+      peakOverrides:{rE:{x:.418,y:.128},rW:{x:.424,y:.248}},
+      angleTemplate:{leftElbow:165,rightElbow:165,leftShoulder:30,rightShoulder:30,leftKnee:170,rightKnee:170,trunkAngle:5},
+      peakAngles:   {leftElbow:165,rightElbow:78, leftShoulder:30,rightShoulder:162,leftKnee:170,rightKnee:170,trunkAngle:5}
+    },
+
+    // 43 ── Rotação de Ombro
+    {
+      name:'Rotação de Ombro',
+      peakOverrides:{lE:{x:.760,y:.302},rE:{x:.240,y:.302},lW:{x:.832,y:.302},rW:{x:.168,y:.302}},
+      angleTemplate:{leftShoulder:30,rightShoulder:30,leftElbow:168,rightElbow:168,leftKnee:170,rightKnee:170,trunkAngle:5},
+      peakAngles:   {leftShoulder:88,rightShoulder:88,leftElbow:168,rightElbow:168,leftKnee:170,rightKnee:170,trunkAngle:5}
+    },
+
+    // 44 ── Flexão Isométrica de Bíceps
+    {
+      name:'Flexão Isométrica de Bíceps',
+      peakOverrides:{lW:{x:.612,y:.312},rW:{x:.388,y:.312}},
+      angleTemplate:{leftElbow:165,rightElbow:165,leftKnee:170,rightKnee:170,trunkAngle:5},
+      peakAngles:   {leftElbow:48, rightElbow:48, leftKnee:170,rightKnee:170,trunkAngle:5}
+    },
+
+    // 45 ── Abdução de Ombro Baixo
+    {
+      name:'Abdução de Ombro Baixo',
+      peakOverrides:{lE:{x:.700,y:.390},rE:{x:.300,y:.390},lW:{x:.748,y:.470},rW:{x:.252,y:.470}},
+      angleTemplate:{leftShoulder:30,rightShoulder:30,leftElbow:165,rightElbow:165,leftKnee:170,rightKnee:170,trunkAngle:5},
+      peakAngles:   {leftShoulder:55,rightShoulder:55,leftElbow:165,rightElbow:165,leftKnee:170,rightKnee:170,trunkAngle:5}
+    },
+
+    // 46 ── Rotação Externa de Ombro
+    {
+      name:'Rotação Externa de Ombro',
+      peakOverrides:{lW:{x:.690,y:.440},rW:{x:.310,y:.440}},
+      angleTemplate:{leftElbow:90, rightElbow:90, leftShoulder:30,rightShoulder:30,leftKnee:170,rightKnee:170,trunkAngle:5},
+      peakAngles:   {leftElbow:90, rightElbow:90, leftShoulder:30,rightShoulder:30,leftKnee:170,rightKnee:170,trunkAngle:5}
+    },
+
+    // 47 ── Rotação Interna de Ombro
+    {
+      name:'Rotação Interna de Ombro',
+      peakOverrides:{lW:{x:.580,y:.440},rW:{x:.420,y:.440}},
+      angleTemplate:{leftElbow:90, rightElbow:90, leftShoulder:30,rightShoulder:30,leftKnee:170,rightKnee:170,trunkAngle:5},
+      peakAngles:   {leftElbow:90, rightElbow:90, leftShoulder:30,rightShoulder:30,leftKnee:170,rightKnee:170,trunkAngle:5}
+    },
+
+    // 48 ── Agachamento Overhead
+    {
+      name:'Agachamento Overhead',
+      peakOverrides:{nose:{x:.500,y:.248},lS:{x:.608,y:.412},rS:{x:.392,y:.412},lE:{x:.658,y:.282},rE:{x:.342,y:.282},lW:{x:.640,y:.182},rW:{x:.360,y:.182},lH:{x:.596,y:.638},rH:{x:.404,y:.638},lK:{x:.622,y:.786},rK:{x:.378,y:.786},lA:{x:.587,y:.908},rA:{x:.413,y:.908}},
+      angleTemplate:{leftKnee:170,rightKnee:170,leftHip:170,rightHip:170,leftShoulder:158,rightShoulder:158,trunkAngle:8},
+      peakAngles:   {leftKnee:88, rightKnee:88, leftHip:85, rightHip:85, leftShoulder:158,rightShoulder:158,trunkAngle:8}
+    },
+
+    // 49 ── Agachamento com Pausa
+    {
+      name:'Agachamento com Pausa',
+      peakOverrides:{nose:{x:.500,y:.238},lS:{x:.608,y:.408},rS:{x:.392,y:.408},lE:{x:.648,y:.558},rE:{x:.352,y:.558},lW:{x:.658,y:.678},rW:{x:.342,y:.678},lH:{x:.592,y:.628},rH:{x:.408,y:.628},lK:{x:.608,y:.778},rK:{x:.392,y:.778},lA:{x:.582,y:.900},rA:{x:.418,y:.900}},
+      angleTemplate:{leftKnee:170,rightKnee:170,leftHip:170,rightHip:170,trunkAngle:5},
+      peakAngles:   {leftKnee:92, rightKnee:92, leftHip:90, rightHip:90, trunkAngle:12}
+    },
+
+    // 50 ── Split Squat
+    {
+      name:'Split Squat',
+      peakOverrides:{nose:{x:.503,y:.128},lK:{x:.565,y:.658},lH:{x:.568,y:.546},rA:{x:.432,y:.900},rK:{x:.436,y:.788}},
+      angleTemplate:{leftKnee:170,rightKnee:170,leftHip:170,rightHip:170,trunkAngle:5},
+      peakAngles:   {leftKnee:88, rightKnee:88, leftHip:88, rightHip:160,trunkAngle:5}
+    },
+
+    // 51 ── Stiff Unilateral
+    {
+      name:'Stiff Unilateral',
+      peakOverrides:{nose:{x:.502,y:.248},lS:{x:.614,y:.406},rS:{x:.386,y:.406},lE:{x:.624,y:.530},rE:{x:.376,y:.530},lW:{x:.614,y:.660},rW:{x:.386,y:.660},lH:{x:.584,y:.622},rH:{x:.416,y:.622},rK:{x:.422,y:.738},rA:{x:.428,y:.920},lK:{x:.576,y:.744}},
+      angleTemplate:{leftKnee:170,rightKnee:170,leftHip:170,rightHip:170,trunkAngle:5},
+      peakAngles:   {leftKnee:162,rightKnee:165,leftHip:98, rightHip:148,trunkAngle:42}
+    },
+
+    // 52 ── Elevação de Perna Lateral
+    {
+      name:'Elevação de Perna Lateral',
+      peakOverrides:{lK:{x:.692,y:.720},lA:{x:.748,y:.878},lH:{x:.590,y:.554}},
+      angleTemplate:{leftKnee:170,rightKnee:170,leftHip:170,rightHip:170,trunkAngle:5},
+      peakAngles:   {leftKnee:168,rightKnee:170,leftHip:143,rightHip:170,trunkAngle:5}
+    },
+
+    // 53 ── Elevação de Perna Posterior
+    {
+      name:'Elevação de Perna Posterior',
+      peakOverrides:{lK:{x:.577,y:.760},lA:{x:.582,y:.930}},
+      angleTemplate:{leftKnee:170,rightKnee:170,leftHip:170,rightHip:170,trunkAngle:5},
+      peakAngles:   {leftKnee:165,rightKnee:170,leftHip:148,rightHip:170,trunkAngle:6}
+    },
+
+    // 54 ── Flexão de Joelho em Pé
+    {
+      name:'Flexão de Joelho em Pé',
+      peakOverrides:{lA:{x:.576,y:.706},lK:{x:.573,y:.682}},
+      angleTemplate:{leftKnee:170,rightKnee:170,leftHip:170,rightHip:170,trunkAngle:5},
+      peakAngles:   {leftKnee:52, rightKnee:170,leftHip:170,rightHip:170,trunkAngle:5}
+    },
+
+    // 55 ── Extensão de Joelho em Pé
+    {
+      name:'Extensão de Joelho em Pé',
+      peakOverrides:{lK:{x:.566,y:.712},lA:{x:.555,y:.575}},
+      angleTemplate:{leftKnee:170,rightKnee:170,leftHip:170,rightHip:170,trunkAngle:5},
+      peakAngles:   {leftKnee:168,rightKnee:170,leftHip:155,rightHip:170,trunkAngle:5}
+    },
+
+    // 56 ── Balanço de Braço
+    {
+      name:'Balanço de Braço',
+      peakOverrides:{lE:{x:.658,y:.498},lW:{x:.672,y:.638},rE:{x:.338,y:.402},rW:{x:.362,y:.524}},
+      angleTemplate:{leftShoulder:20,rightShoulder:40,leftElbow:155,rightElbow:155,leftKnee:170,rightKnee:170,trunkAngle:5},
+      peakAngles:   {leftShoulder:20,rightShoulder:40,leftElbow:155,rightElbow:155,leftKnee:170,rightKnee:170,trunkAngle:5}
+    },
+
+    // 57 ── Inclinação de Tronco
+    {
+      name:'Inclinação de Tronco',
+      peakOverrides:{nose:{x:.500,y:.258},lS:{x:.612,y:.406},rS:{x:.388,y:.406},lE:{x:.622,y:.532},rE:{x:.378,y:.532},lW:{x:.612,y:.656},rW:{x:.388,y:.656},lH:{x:.582,y:.618},rH:{x:.418,y:.618}},
+      angleTemplate:{leftKnee:168,rightKnee:168,leftHip:170,rightHip:170,trunkAngle:5},
+      peakAngles:   {leftKnee:168,rightKnee:168,leftHip:108,rightHip:108,trunkAngle:38}
+    },
+
+    // 58 ── Rotação de Quadril em Pé
+    {
+      name:'Rotação de Quadril em Pé',
+      peakOverrides:{lH:{x:.610,y:.548},rH:{x:.458,y:.562},nose:{x:.508,y:.122}},
+      angleTemplate:{leftKnee:168,rightKnee:168,leftHip:168,rightHip:168,trunkAngle:5},
+      peakAngles:   {leftKnee:168,rightKnee:168,leftHip:168,rightHip:168,trunkAngle:8}
+    },
+
+    // 59 ── Crunch em Pé
+    {
+      name:'Crunch em Pé',
+      peakOverrides:{lK:{x:.555,y:.512},lA:{x:.548,y:.626},rE:{x:.390,y:.388}},
+      angleTemplate:{leftKnee:170,rightKnee:170,leftHip:170,rightHip:170,trunkAngle:5},
+      peakAngles:   {leftKnee:80, rightKnee:170,leftHip:98, rightHip:170,trunkAngle:12}
+    },
+
+    // 60 ── Elevação de Joelho com Toque
+    {
+      name:'Elevação de Joelho com Toque',
+      peakOverrides:{rK:{x:.422,y:.508},rA:{x:.426,y:.622},lW:{x:.424,y:.524},rW:{x:.418,y:.518}},
+      angleTemplate:{leftKnee:170,rightKnee:170,leftHip:170,rightHip:170,trunkAngle:5},
+      peakAngles:   {leftKnee:170,rightKnee:72, leftHip:170,rightHip:88, trunkAngle:8}
+    },
+
+    // 61 ── Equilíbrio em Uma Perna
+    {
+      name:'Equilíbrio em Uma Perna',
+      peakOverrides:{rK:{x:.416,y:.690},rA:{x:.412,y:.812}},
+      angleTemplate:{leftKnee:170,rightKnee:170,leftHip:170,rightHip:170,trunkAngle:5},
+      peakAngles:   {leftKnee:170,rightKnee:165,leftHip:170,rightHip:168,trunkAngle:5}
+    },
+
+    // 62 ── Passo Lateral
+    {
+      name:'Passo Lateral',
+      peakOverrides:{lA:{x:.718,y:.892},lK:{x:.698,y:.730},lH:{x:.618,y:.560},rA:{x:.464,y:.892}},
+      angleTemplate:{leftKnee:168,rightKnee:168,leftHip:166,rightHip:168,trunkAngle:5},
+      peakAngles:   {leftKnee:168,rightKnee:168,leftHip:166,rightHip:168,trunkAngle:5}
+    },
+
+    // 63 ── Agachamento com Torção
+    {
+      name:'Agachamento com Torção',
+      peakOverrides:{nose:{x:.500,y:.248},lS:{x:.632,y:.428},rS:{x:.412,y:.428},lE:{x:.698,y:.438},rE:{x:.296,y:.438},lW:{x:.730,y:.424},rW:{x:.258,y:.452},lH:{x:.598,y:.640},rH:{x:.402,y:.640},lK:{x:.612,y:.786},rK:{x:.388,y:.786}},
+      angleTemplate:{leftKnee:170,rightKnee:170,leftHip:170,rightHip:170,trunkAngle:5},
+      peakAngles:   {leftKnee:90, rightKnee:90, leftHip:88, rightHip:88, trunkAngle:38}
+    },
+
+    // 64 ── Remada Unilateral
+    {
+      name:'Remada Unilateral',
+      peakOverrides:{nose:{x:.500,y:.218},lS:{x:.614,y:.396},rS:{x:.386,y:.396},lH:{x:.580,y:.594},rH:{x:.420,y:.594},rE:{x:.384,y:.398},rW:{x:.396,y:.504}},
+      angleTemplate:{rightElbow:165,leftElbow:165,leftShoulder:30,rightShoulder:30,trunkAngle:35},
+      peakAngles:   {rightElbow:88, leftElbow:165,leftShoulder:30,rightShoulder:28,trunkAngle:35}
+    },
+
+    // 65 ── Dobramento Frontal
+    {
+      name:'Dobramento Frontal',
+      peakOverrides:{nose:{x:.500,y:.368},lS:{x:.608,y:.496},rS:{x:.392,y:.496},lE:{x:.618,y:.604},rE:{x:.382,y:.604},lW:{x:.608,y:.726},rW:{x:.392,y:.726},lH:{x:.580,y:.644},rH:{x:.420,y:.644}},
+      angleTemplate:{leftKnee:162,rightKnee:162,leftHip:170,rightHip:170,trunkAngle:5},
+      peakAngles:   {leftKnee:162,rightKnee:162,leftHip:68, rightHip:68, trunkAngle:65}
+    },
+
+    // 66 ── Toque nos Pés
+    {
+      name:'Toque nos Pés',
+      peakOverrides:{nose:{x:.500,y:.422},lS:{x:.608,y:.544},rS:{x:.392,y:.544},lE:{x:.618,y:.648},rE:{x:.382,y:.648},lW:{x:.610,y:.780},rW:{x:.390,y:.780},lH:{x:.580,y:.662},rH:{x:.420,y:.662}},
+      angleTemplate:{leftKnee:160,rightKnee:160,leftHip:170,rightHip:170,trunkAngle:5},
+      peakAngles:   {leftKnee:160,rightKnee:160,leftHip:58, rightHip:58, trunkAngle:72}
+    },
+
+    // 67 ── Afundo com Torção
+    {
+      name:'Afundo com Torção',
+      peakOverrides:{nose:{x:.502,y:.126},rK:{x:.296,y:.796},rA:{x:.252,y:.906},lK:{x:.572,y:.660},lH:{x:.570,y:.548},lE:{x:.688,y:.434},rE:{x:.298,y:.432},lW:{x:.722,y:.420},rW:{x:.262,y:.454}},
+      angleTemplate:{leftKnee:170,rightKnee:170,leftHip:170,rightHip:170,trunkAngle:5},
+      peakAngles:   {leftKnee:92, rightKnee:88, leftHip:88, rightHip:160,trunkAngle:35}
+    },
+
+    // 68 ── Swing de Kettlebell
+    {
+      name:'Swing de Kettlebell',
+      peakOverrides:{nose:{x:.500,y:.108},lE:{x:.562,y:.294},rE:{x:.438,y:.294},lW:{x:.556,y:.212},rW:{x:.444,y:.212},lH:{x:.584,y:.568},rH:{x:.416,y:.568}},
+      angleTemplate:{leftShoulder:30,rightShoulder:30,leftElbow:165,rightElbow:165,leftKnee:170,rightKnee:170,trunkAngle:5},
+      peakAngles:   {leftShoulder:82,rightShoulder:82,leftElbow:165,rightElbow:165,leftKnee:170,rightKnee:170,trunkAngle:5}
+    },
+
+    // 69 ── Flexão de Ombro Unilateral
+    {
+      name:'Flexão de Ombro Unilateral',
+      peakOverrides:{rE:{x:.360,y:.262},rW:{x:.358,y:.162}},
+      angleTemplate:{leftShoulder:28,rightShoulder:28,leftElbow:165,rightElbow:162,leftKnee:170,rightKnee:170,trunkAngle:5},
+      peakAngles:   {leftShoulder:28,rightShoulder:90, leftElbow:165,rightElbow:162,leftKnee:170,rightKnee:170,trunkAngle:5}
+    },
+
+    // 70 ── Extensão de Ombro Unilateral
+    {
+      name:'Extensão de Ombro Unilateral',
+      peakOverrides:{rE:{x:.366,y:.518},rW:{x:.356,y:.648}},
+      angleTemplate:{leftShoulder:28,rightShoulder:28,leftElbow:165,rightElbow:162,leftKnee:170,rightKnee:170,trunkAngle:5},
+      peakAngles:   {leftShoulder:28,rightShoulder:15, leftElbow:165,rightElbow:162,leftKnee:170,rightKnee:170,trunkAngle:5}
     }
 
   ];
 
-  // ── Build full exercise documents ──────────────────────────────────────────
+  // ── Build full exercise document ───────────────────────────────────────────
   function buildExercise(def, uid) {
-    const animFrames = makeAnimFrames(def.peakOverrides, def.restOverrides || {});
+    const animFrames  = makeAnimFrames(def.peakOverrides, def.restOverrides || {});
     const motionRange = makeMotionRange(animFrames);
     const now = new Date().toISOString();
     return {
@@ -534,149 +746,97 @@
     };
   }
 
-  // ── Delete all exercises (individual deletes, skips permission errors) ──────
+  // ── Delete all exercises ───────────────────────────────────────────────────
   async function deleteAllExercises() {
     log('Buscando exercícios para deletar...', 'log-info');
     const snap = await db.collection('exercises').get();
-    if (snap.empty) {
-      log('  → Coleção já está vazia.', 'log-info');
-      return { deleted: 0, failed: 0 };
-    }
-    log(`  → ${snap.size} documento(s) encontrado(s). Deletando individualmente...`, 'log-info');
-    let deleted = 0, failed = 0;
+    if (snap.empty) { log('  → Coleção já está vazia.', 'log-info'); return {deleted:0,failed:0}; }
+    log(`  → ${snap.size} documento(s). Deletando...`, 'log-info');
+    let deleted=0, failed=0;
     for (const docSnap of snap.docs) {
-      try {
-        await docSnap.ref.delete();
-        deleted++;
-        if (deleted % 10 === 0) log(`  → ${deleted}/${snap.size} deletados...`, 'log-info');
-      } catch (e) {
-        failed++;
-      }
+      try { await docSnap.ref.delete(); deleted++; }
+      catch(e) { failed++; }
     }
-    return { deleted, failed };
+    return {deleted, failed};
   }
 
-  // ── Seed all exercises ─────────────────────────────────────────────────────
+  // ── Seed ───────────────────────────────────────────────────────────────────
   async function seedExercises(uid) {
     const total = EXERCISE_DEFS.length;
-    for (let i = 0; i < total; i++) {
-      const def = EXERCISE_DEFS[i];
-      const doc = buildExercise(def, uid);
+    for (let i=0; i<total; i++) {
+      const doc = buildExercise(EXERCISE_DEFS[i], uid);
       await db.collection('exercises').add(doc);
-      log(`  ✓ [${i + 1}/${total}] ${def.name}`, 'log-ok');
-      setProgress(60 + ((i + 1) / total) * 40);
+      log(`  ✓ [${i+1}/${total}] ${EXERCISE_DEFS[i].name}`, 'log-ok');
+      setProgress(60 + ((i+1)/total)*40);
     }
   }
 
-  // ── Auth helper ────────────────────────────────────────────────────────────
   async function doAuth() {
     try {
       const cred = await auth.signInAnonymously();
-      const uid = cred.user.uid;
-      log(`  → UID: ${uid}`, 'log-ok');
-      return uid;
-    } catch (e) {
-      log(`  → Auth falhou (${e.message}), usando uid="seed"`, 'log-info');
+      log(`  → UID: ${cred.user.uid}`, 'log-ok');
+      return cred.user.uid;
+    } catch(e) {
+      log(`  → Auth falhou, usando uid="seed"`, 'log-info');
       return 'seed';
     }
   }
 
   function disableAllBtns(state) {
-    ['btnSeed','btnAddOnly','btnStatus'].forEach(id => {
-      document.getElementById(id).disabled = state;
-    });
+    ['btnSeed','btnAddOnly','btnStatus'].forEach(id => document.getElementById(id).disabled = state);
   }
 
   // ── Apagar tudo + criar ────────────────────────────────────────────────────
   document.getElementById('btnSeed').addEventListener('click', async () => {
-    if (!confirm(`Tem certeza? Isso tentará apagar TODOS os exercícios e criará ${EXERCISE_DEFS.length} novos.`)) return;
-
-    disableAllBtns(true);
-    clearLog();
-    setProgress(0);
-
+    if (!confirm(`Apagar tudo e criar ${EXERCISE_DEFS.length} exercícios?`)) return;
+    disableAllBtns(true); clearLog(); setProgress(0);
     try {
-      log('── Autenticando anonimamente...', 'log-head');
-      const uid = await doAuth();
-      setProgress(10);
-
+      log('── Autenticando...', 'log-head');
+      const uid = await doAuth(); setProgress(10);
       log('── Apagando coleção exercises...', 'log-head');
-      const { deleted, failed } = await deleteAllExercises();
-      if (failed > 0) {
-        log(`  → ${deleted} deletado(s), ${failed} não puderam ser apagados (sem permissão).`, 'log-err');
-        log('  → Use o botão verde para só adicionar, ou ajuste as regras do Firestore.', 'log-err');
-      } else {
-        log(`  → ${deleted} documento(s) apagado(s).`, 'log-ok');
-      }
+      const {deleted, failed} = await deleteAllExercises();
+      log(`  → ${deleted} deletado(s)${failed>0?`, ${failed} com erro`:'.'}`,'log-ok');
       setProgress(55);
-
       log(`── Criando ${EXERCISE_DEFS.length} exercícios...`, 'log-head');
       await seedExercises(uid);
-
       setProgress(100);
-      log('', 'log-info');
-      log('══════════════════════════════════════', 'log-ok');
-      log(`✅ Concluído! ${EXERCISE_DEFS.length} exercícios criados.`, 'log-ok');
-      if (failed > 0) log(`⚠ ${failed} exercício(s) antigo(s) não foram apagados.`, 'log-err');
-      log('══════════════════════════════════════', 'log-ok');
-    } catch (err) {
-      log('', 'log-info');
+      log(`\n✅ Concluído! ${EXERCISE_DEFS.length} exercícios criados.`, 'log-ok');
+    } catch(err) {
       log(`❌ Erro: ${err.message}`, 'log-err');
-      console.error(err);
-    } finally {
-      disableAllBtns(false);
-    }
+    } finally { disableAllBtns(false); }
   });
 
-  // ── Só adicionar exercícios (sem deletar) ──────────────────────────────────
+  // ── Só adicionar ───────────────────────────────────────────────────────────
   document.getElementById('btnAddOnly').addEventListener('click', async () => {
-    if (!confirm(`Vai adicionar ${EXERCISE_DEFS.length} exercícios SEM apagar os existentes. Continuar?`)) return;
-
-    disableAllBtns(true);
-    clearLog();
-    setProgress(0);
-
+    if (!confirm(`Adicionar ${EXERCISE_DEFS.length} exercícios sem apagar?`)) return;
+    disableAllBtns(true); clearLog(); setProgress(0);
     try {
-      log('── Autenticando anonimamente...', 'log-head');
-      const uid = await doAuth();
-      setProgress(10);
-
-      log(`── Criando ${EXERCISE_DEFS.length} exercícios (sem deletar)...`, 'log-head');
+      log('── Autenticando...', 'log-head');
+      const uid = await doAuth(); setProgress(10);
+      log(`── Criando ${EXERCISE_DEFS.length} exercícios...`, 'log-head');
       await seedExercises(uid);
-
       setProgress(100);
-      log('', 'log-info');
-      log('══════════════════════════════════════', 'log-ok');
-      log(`✅ ${EXERCISE_DEFS.length} exercícios adicionados!`, 'log-ok');
-      log('══════════════════════════════════════', 'log-ok');
-    } catch (err) {
-      log('', 'log-info');
+      log(`\n✅ ${EXERCISE_DEFS.length} exercícios adicionados!`, 'log-ok');
+    } catch(err) {
       log(`❌ Erro: ${err.message}`, 'log-err');
-      console.error(err);
-    } finally {
-      disableAllBtns(false);
-    }
+    } finally { disableAllBtns(false); }
   });
 
-  // ── Status check ───────────────────────────────────────────────────────────
+  // ── Status ─────────────────────────────────────────────────────────────────
   document.getElementById('btnStatus').addEventListener('click', async () => {
-    clearLog();
-    setProgress(0);
-    log('── Verificando banco de dados...', 'log-head');
+    clearLog(); setProgress(0);
+    log('── Verificando banco...', 'log-head');
     try {
-      await auth.signInAnonymously().catch(() => {});
+      await auth.signInAnonymously().catch(()=>{});
       const snap = await db.collection('exercises').get();
       log(`  → ${snap.size} exercício(s) na coleção.`, 'log-ok');
-      snap.docs.forEach((d, i) => {
+      snap.docs.forEach((d,i) => {
         const data = d.data();
-        const hasAnim = data.animFrames && data.animFrames.length > 0;
         const frames = data.animFrames ? data.animFrames.length : 0;
-        log(`  ${i + 1}. ${data.name || '(sem nome)'} — animFrames: ${hasAnim ? `${frames} frames ✓` : '❌ ausente'}`, hasAnim ? 'log-ok' : 'log-err');
+        log(`  ${i+1}. ${data.name||'(sem nome)'} — ${frames} frames`, frames>0?'log-ok':'log-err');
       });
       setProgress(100);
-    } catch (err) {
-      log(`❌ ${err.message}`, 'log-err');
-    }
+    } catch(err) { log(`❌ ${err.message}`, 'log-err'); }
   });
   </script>
 </body>

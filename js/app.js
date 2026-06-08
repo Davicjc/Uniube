@@ -1443,7 +1443,7 @@ function renderHistoryList(workouts) {
 
 // === BIBLIOTECA DE EXERCÍCIOS ===
 // mostra todos os exercícios (pré-prontos + personalizados) com filtro e busca
-function showExerciseLibrary() {
+async function showExerciseLibrary() {
   showScreen('exercises');
 
   if (window.FitAIChar && !state.charLib) {
@@ -1462,6 +1462,16 @@ function showExerciseLibrary() {
     t.classList.toggle('active', t.dataset.filter === 'all');
   });
 
+  // mostra loading enquanto busca do Firestore
+  const list = $('exlib-list');
+  if (list) list.innerHTML = '<p style="color:#666;font-size:14px;text-align:center;padding:24px 0;">Carregando exercícios…</p>';
+
+  try {
+    state.customExercises = await _getCustomExercises();
+  } catch (e) {
+    console.warn('[FitAI] Erro ao carregar exercícios na biblioteca:', e.message);
+  }
+
   renderExLibList();
 }
 
@@ -1470,11 +1480,25 @@ function renderExLibList() {
   const filter = state.exlibFilter || 'all';
   const search = (state.exlibSearch || '').trim().toLowerCase();
 
-  // junta pré-prontos + personalizados sem duplicatas
-  const allEx = [...BUILTIN_EXERCISES.map(e => ({ ...e, isCustom: false }))];
+  // índice rápido de exercícios do Firestore por nome
+  const customByName = {};
+  (state.customExercises || []).forEach(ce => { customByName[ce.name] = ce; });
+
+  const hiddenBuiltins = _getHiddenBuiltins();
+
+  // exercícios builtin (ocultos pelo usuário ficam de fora)
+  const allEx = BUILTIN_EXERCISES
+    .filter(e => !hiddenBuiltins.has(e.name))
+    .map(e => {
+      const custom = customByName[e.name];
+      return { ...e, id: custom?.id };
+    });
+
+  // exercícios só do Firestore (sem contraparte builtin)
+  const builtinNames = new Set(BUILTIN_EXERCISES.map(e => e.name));
   (state.customExercises || []).forEach(ce => {
-    if (!allEx.find(e => e.name === ce.name)) {
-      allEx.push({ name: ce.name, category: ce.category || 'Geral', location: ce.location || 'home', id: ce.id, isCustom: true });
+    if (!builtinNames.has(ce.name)) {
+      allEx.push({ name: ce.name, category: ce.category || 'Geral', location: ce.location || 'home', id: ce.id });
     }
   });
 
@@ -1504,18 +1528,13 @@ function renderExLibList() {
         <div class="exlib-item-name">${ex.name}</div>
         <div class="exlib-item-cat">${ex.category || 'Geral'}</div>
       </div>
-      ${ex.isCustom
-        ? '<button class="btn-exlib-delete" title="Apagar exercício">🗑</button>'
-        : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#444" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>'
-      }
+      <button class="btn-exlib-delete" title="Apagar exercício">🗑</button>
     `;
     item.addEventListener('click', () => selectLibEx(ex));
-    if (ex.isCustom) {
-      item.querySelector('.btn-exlib-delete').addEventListener('click', (e) => {
-        e.stopPropagation();
-        deleteLibEx(ex);
-      });
-    }
+    item.querySelector('.btn-exlib-delete').addEventListener('click', (e) => {
+      e.stopPropagation();
+      deleteLibEx(ex);
+    });
     list.appendChild(item);
   });
 
@@ -1550,13 +1569,28 @@ function selectLibEx(ex) {
   }
 }
 
-// apaga um exercício personalizado da biblioteca
+function _getHiddenBuiltins() {
+  try { return new Set(JSON.parse(localStorage.getItem('fitai_hidden_builtins') || '[]')); }
+  catch { return new Set(); }
+}
+function _saveHiddenBuiltins(set) {
+  try { localStorage.setItem('fitai_hidden_builtins', JSON.stringify([...set])); } catch { /* quota */ }
+}
+
+// apaga um exercício da biblioteca
 async function deleteLibEx(ex) {
   if (!confirm(`Apagar "${ex.name}"? Esta ação não pode ser desfeita.`)) return;
 
   try {
-    await _deleteCustomExercise(ex.id);
-    state.customExercises = (state.customExercises || []).filter(e => e.id !== ex.id);
+    if (ex.id) {
+      await _deleteCustomExercise(ex.id);
+      state.customExercises = (state.customExercises || []).filter(e => e.id !== ex.id);
+    } else {
+      // builtin sem versão no Firestore: oculta localmente
+      const hidden = _getHiddenBuiltins();
+      hidden.add(ex.name);
+      _saveHiddenBuiltins(hidden);
+    }
 
     if (state.exlibSelected === ex.name) {
       state.exlibSelected = null;

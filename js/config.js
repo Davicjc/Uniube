@@ -139,15 +139,16 @@ async function saveCustomExercise(exercise) {
 }
 
 async function getCustomExercises() {
-  const userId = await _uid();
-
-  if (_db && userId) {
+  if (_db) {
     try {
-      // busco todos – são compartilhados, qualquer usuário autenticado pode ver
+      // aguarda auth se disponível, mas não bloqueia se falhar
+      if (_authReady) await _authReady.catch(() => {});
       const snap = await _db.collection('exercises')
         .orderBy('serverTimestamp', 'desc')
         .get();
-      return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      const result = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      console.info('[FitAI] Exercícios carregados do Firestore:', result.length);
+      return result;
     } catch (err) {
       console.warn('[FitAI] Erro ao buscar exercícios:', err.message);
     }
