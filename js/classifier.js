@@ -49,6 +49,9 @@ class ExerciseClassifier {
     this._hkLastLeg   = null;
     this._pushupState = 'up';
     this._custState2  = {}; // rastreamento de exercícios personalizados
+
+    // contador de rep por qualidade: 'rest' | 'peak'
+    this._qPhase = {};
   }
 
   setCustomExercises(list) {
@@ -67,6 +70,7 @@ class ExerciseClassifier {
     this._jjOpened            = false;
     this._pushupState         = 'up';
     this._custState2          = {};
+    this._qPhase              = {};
   }
 
   // === ATUALIZAÇÃO A CADA FRAME ===
@@ -144,7 +148,25 @@ class ExerciseClassifier {
         break;
     }
 
-    // se completou uma rep, calcula os pontos e atualiza o score
+    // --- contador de rep por qualidade ---
+    // conta uma rep sempre que a qualidade sobe acima de 80% e volta abaixo de 40%
+    // serve como fallback quando a máquina de estado não detecta (ângulos fora do limiar)
+    if (!this._qPhase) this._qPhase = {};
+    const qKey = this.currentExercise || '__none__';
+    if (!this._qPhase[qKey]) this._qPhase[qKey] = 'rest';
+
+    const q = repResult.quality;
+    if (this._qPhase[qKey] === 'rest' && q >= 0.80) {
+      this._qPhase[qKey] = 'peak';
+    } else if (this._qPhase[qKey] === 'peak' && q < 0.40) {
+      this._qPhase[qKey] = 'rest';
+      if (!repResult.repCompleted) {
+        repResult.repCompleted = true;
+        repResult.quality      = 0.80;
+      }
+    }
+
+    // se completou uma rep (via máquina de estado OU via qualidade), calcula os pontos
     if (repResult.repCompleted) {
       this.repCount++;
       const pts = POINTS[this.currentExercise] || POINTS['custom'];
@@ -314,16 +336,10 @@ class ExerciseClassifier {
       this._states[key] = 'up';
       this._repMinAngles[key] = avgKnee;
     } else {
-      // feedback em tempo real durante o movimento
-      let rtQ = 1.0;
-      const lKneeLM  = gl(window.LANDMARKS.LEFT_KNEE);
-      const lAnkleLM = gl(window.LANDMARKS.LEFT_ANKLE);
-      const rKneeLM  = gl(window.LANDMARKS.RIGHT_KNEE);
-      const rAnkleLM = gl(window.LANDMARKS.RIGHT_ANKLE);
-      if (vis(lKneeLM) && vis(lAnkleLM) && lKneeLM.x - lAnkleLM.x > 0.05) rtQ -= 0.25;
-      if (vis(rKneeLM) && vis(rAnkleLM) && rAnkleLM.x - rKneeLM.x > 0.05) rtQ -= 0.25;
-      if (angles.trunkAngle !== null && angles.trunkAngle > 40) rtQ -= 0.2;
-      result.quality = Math.max(0, Math.min(1, rtQ));
+      // qualidade = profundidade do agachamento (0 em pé, 1 em 90°)
+      // faz a barra subir conforme o usuário desce, independente de erros de forma
+      const depth = Math.max(0, Math.min(1, (170 - avgKnee) / 80));
+      result.quality = depth;
 
       if (avgKnee < 160) {
         if (avgKnee > 110) {
@@ -392,15 +408,10 @@ class ExerciseClassifier {
         ? ['Excelente polichinelo!']
         : ['Tente abrir mais os braços e as pernas simetricamente.'];
     } else {
-      let rtQ = 1.0;
-      if (vis(lWrist) && vis(rWrist)) {
-        rtQ -= Math.min(Math.abs(lWrist.y - rWrist.y) * 5, 0.4);
-      }
-      if (vis(lAnkle) && vis(rAnkle) && vis(lShoulder) && vis(rShoulder)) {
-        const legAsym = Math.abs((lAnkle.x - lShoulder.x) - (rShoulder.x - rAnkle.x));
-        rtQ -= Math.min(legAsym * 3, 0.3);
-      }
-      result.quality = Math.max(0, Math.min(1, rtQ));
+      // qualidade = abertura da posição (0 fechado, 1 totalmente aberto)
+      const armQ  = armsUp ? 1.0 : Math.max(0, 1 - (wristAvgY - shoulderAvgY) / 0.15);
+      const feetQ = Math.min(1, footSpread / 0.28);
+      result.quality = Math.max(0, Math.min(1, (armQ + feetQ) / 2));
 
       if (this._jjState === 'closed') {
         result.feedback = ['Abra os braços e pernas ao mesmo tempo.'];
@@ -474,15 +485,9 @@ class ExerciseClassifier {
       issues.forEach(i => this.issues.add(i));
       this._repMinAngles[key] = avgElbow;
     } else {
-      let rtQ = 1.0;
-      if (vis(lHip, 0.4) && vis(lShoulder, 0.4) && vis(lAnkle, 0.4)) {
-        const midHipY      = (lHip.y + rHip.y) / 2;
-        const midShoulderY = (lShoulder.y + rShoulder.y) / 2;
-        const midAnkleY    = (lAnkle.y + rAnkle.y) / 2;
-        const sag = midHipY - (midShoulderY + midAnkleY) / 2;
-        if (Math.abs(sag) > 0.04) rtQ -= Math.min(Math.abs(sag) * 5, 0.4);
-      }
-      result.quality  = Math.max(0, Math.min(1, rtQ));
+      // qualidade = profundidade da flexão (0 com cotovelos esticados, 1 com cotovelos dobrados a 90°)
+      const depth = Math.max(0, Math.min(1, (170 - avgElbow) / 80));
+      result.quality  = depth;
       result.feedback = this._states[key] === 'up'
         ? ['Flexione os cotovelos para descer.']
         : ['Empurre para cima para completar a repetição.'];
@@ -530,14 +535,12 @@ class ExerciseClassifier {
       this._states[key] = 'right';
       result.feedback   = ['Avanço direito – volte para a posição inicial.'];
     } else if (leftDown || rightDown) {
-      let rtQ = 1.0;
+      // qualidade = profundidade do avanço (0 em pé, 1 com joelho a 90°)
       const activeKnee = leftDown ? lKnee : rKnee;
-      if (activeKnee > 115) rtQ -= 0.3;
-      if (angles.trunkAngle !== null && angles.trunkAngle > 20) rtQ -= 0.2;
-      result.quality  = Math.max(0, Math.min(1, rtQ));
+      result.quality  = Math.max(0, Math.min(1, (170 - activeKnee) / 80));
       result.feedback = ['Volte para a posição inicial.'];
     } else {
-      result.quality  = 1.0;
+      result.quality  = 0.0;
       result.feedback = ['Dê um passo à frente para iniciar o avanço.'];
     }
 
@@ -591,8 +594,17 @@ class ExerciseClassifier {
       }
     } else if (!lRaised && !rRaised) {
       this._states[key] = 'none';
-      result.quality  = 0.3;
+      result.quality  = 0.0;
       result.feedback = ['Eleve o joelho acima do quadril.'];
+    }
+
+    // em todos os casos, mostrar a qualidade proporcional à altura do joelho
+    if (!result.repCompleted) {
+      const activeKnee   = lRaised ? lKnee : (rRaised ? rKnee : null);
+      const activeHip    = lRaised ? lHip  : (rRaised ? rHip  : null);
+      if (activeKnee && activeHip) {
+        result.quality = Math.min(1, Math.max(0, (activeHip.y - activeKnee.y) / 0.12));
+      }
     }
 
     return result;

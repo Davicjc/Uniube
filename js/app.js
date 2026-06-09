@@ -576,7 +576,7 @@ async function initGuidedWorkout() {
   state.setReps = 0;
 
   state.classifier = new window.ExerciseClassifier();
-  state.classifier.setCustomExercises(state.customExercises);
+  state.classifier.setCustomExercises(_recordedExercises());
   state.classifier.setExpectedExercise(item.name);
 
   updateGuidedPanel();
@@ -698,7 +698,18 @@ function onGuidedRep(quality, pointsEarned) {
 // série concluída: verifica se tem mais séries ou se passou pro próximo exercício
 function completeSet() {
   clearInterval(state.restTimer);
-  const item = state.plan[state.planIndex];
+  const item   = state.plan[state.planIndex];
+  const exName = item.name;
+
+  // bônus por atingir a meta de reps da série
+  const SET_BONUS = 25;
+  state.workout.totalScore += SET_BONUS;
+  $('workout-score').textContent = state.workout.totalScore;
+  if (state.workout.exercises[exName]) {
+    state.workout.exercises[exName].score       = (state.workout.exercises[exName].score || 0) + SET_BONUS;
+    state.workout.exercises[exName].setsCompleted = (state.workout.exercises[exName].setsCompleted || 0) + 1;
+  }
+
   state.setIndex++;
 
   if (state.setIndex >= item.sets) {
@@ -774,10 +785,16 @@ async function endGuidedWorkout() {
     ? Math.floor((Date.now() - state.workout.startTime) / 1000)
     : 0;
 
-  // converte o Set de issues pra Array (Set não é serializável pra JSON)
+  // converte o Set de issues pra Array e injeta meta do plano por exercício
   const exercisesForReport = {};
   for (const [name, ex] of Object.entries(state.workout.exercises)) {
-    exercisesForReport[name] = { ...ex, issues: Array.from(ex.issues || new Set()) };
+    const planItem = (state.plan || []).find(p => p.name === name);
+    exercisesForReport[name] = {
+      ...ex,
+      issues:     Array.from(ex.issues || new Set()),
+      targetReps: planItem ? planItem.sets * planItem.repsPerSet : null,
+      targetSets: planItem ? planItem.sets : null
+    };
   }
 
   const stats     = getLocalStats();
@@ -810,6 +827,7 @@ async function endGuidedWorkout() {
   showScreen('report');
   updateHomeStats();
   setTimeout(() => animateScoreCircle(report.totalScore), 100);
+  callGeminiWorkoutFeedback(report, duration, state.plan);
 }
 
 function abandonWorkout() {
@@ -870,7 +888,7 @@ async function startWorkout() {
   };
 
   state.classifier = new window.ExerciseClassifier();
-  state.classifier.setCustomExercises(state.customExercises);
+  state.classifier.setCustomExercises(_recordedExercises());
 
   showScreen('workout');
 
@@ -1080,11 +1098,17 @@ async function endWorkout() {
   showScreen('report');
   updateHomeStats();
   setTimeout(() => animateScoreCircle(report.totalScore), 100);
+  callGeminiWorkoutFeedback(report, duration);
 }
 
 // === RELATÓRIO ===
 // renderiza o relatório de treino na tela: pontuação, resumo, exercícios, dicas
 function renderReport(report, duration) {
+  // esconde card de IA até o feedback chegar
+  const aiSection = $('ai-feedback-section');
+  if (aiSection) aiSection.style.display = 'none';
+  if (window.speechSynthesis) window.speechSynthesis.cancel();
+
   const now = new Date();
   $('report-date').textContent = now.toLocaleDateString('pt-BR', {
     weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
@@ -1120,12 +1144,19 @@ function renderReport(report, duration) {
         'Melhorar':  'status-melhorar'
       }[ex.status] || 'status-bom';
 
+      const repsDisplay = ex.targetReps
+        ? `<strong>${ex.reps}/${ex.targetReps}</strong>reps`
+        : `<strong>${ex.reps}</strong>reps`;
+      const goalHit = ex.targetReps ? ex.reps >= ex.targetReps : null;
+      const finalStatus = goalHit === true ? 'Meta ✓' : goalHit === false ? ex.status : ex.status;
+      const finalClass  = goalHit === true ? 'status-excelente' : statusClass;
+
       row.innerHTML = `
         <div class="exercise-row-name">${ex.name}</div>
-        <div class="exercise-row-reps"><strong>${ex.reps}</strong>reps</div>
+        <div class="exercise-row-reps">${repsDisplay}</div>
         <div class="exercise-row-quality"><strong>${ex.avgQuality}%</strong>qualidade</div>
         <div class="exercise-row-score">${ex.score} pts</div>
-        <div class="exercise-row-status ${statusClass}">${ex.status}</div>
+        <div class="exercise-row-status ${finalClass}">${finalStatus}</div>
       `;
       breakdownEl.appendChild(row);
     });
@@ -1352,7 +1383,7 @@ async function saveRecording() {
     showToast(`"${template.name}" salvo com sucesso!`, 'success');
 
     if (state.classifier) {
-      state.classifier.setCustomExercises(state.customExercises);
+      state.classifier.setCustomExercises(_recordedExercises());
     }
 
     cancelRecording();
@@ -1614,6 +1645,143 @@ async function deleteLibEx(ex) {
   }
 }
 
+// retorna só exercícios gravados de verdade (com signature string)
+// exercícios do seed têm signature:{} e não devem ir pro classifier
+function _recordedExercises() {
+  return (state.customExercises || []).filter(
+    e => typeof e.signature === 'string' && e.signature.length > 0
+  );
+}
+
+// === GEMINI AI + TEXT-TO-SPEECH ===
+
+function _geminiKey() {
+  return localStorage.getItem('fitai_gemini_key') || '';
+}
+
+function speak(text) {
+  if (!('speechSynthesis' in window)) return;
+  window.speechSynthesis.cancel();
+  state._lastSpokenText = text;
+
+  const utter = new SpeechSynthesisUtterance(text);
+  utter.lang  = 'pt-BR';
+  utter.rate  = 0.93;
+  utter.pitch = 1.0;
+
+  const doSpeak = () => {
+    const voices  = window.speechSynthesis.getVoices();
+    const ptVoice = voices.find(v => v.lang === 'pt-BR')
+                 || voices.find(v => v.lang.startsWith('pt'));
+    if (ptVoice) utter.voice = ptVoice;
+    window.speechSynthesis.speak(utter);
+  };
+
+  if (window.speechSynthesis.getVoices().length > 0) {
+    doSpeak();
+  } else {
+    window.speechSynthesis.addEventListener('voiceschanged', doSpeak, { once: true });
+  }
+}
+
+async function callGeminiWorkoutFeedback(report, duration, plan) {
+  const key = _geminiKey();
+  if (!key) return;
+
+  const aiSection = $('ai-feedback-section');
+  const aiText    = $('ai-feedback-text');
+  if (aiSection) aiSection.style.display = 'block';
+  if (aiText)    aiText.textContent      = 'Gerando avaliação com IA…';
+
+  const p = state.profile || {};
+  const bmi = p.height && p.weight
+    ? (p.weight / ((p.height / 100) ** 2)).toFixed(1)
+    : null;
+  const bmiLabel = !bmi ? null
+    : bmi < 18.5 ? 'abaixo do peso'
+    : bmi < 25   ? 'peso normal'
+    : bmi < 30   ? 'sobrepeso'
+    : 'obesidade';
+
+  // compara metas do plano com o realizado
+  let goalBlock = null;
+  if (plan && plan.length > 0) {
+    const goalLines = plan.map(item => {
+      const ex     = (report.exerciseBreakdown || []).find(e => e.name === item.name);
+      const done   = ex ? ex.reps : 0;
+      const target = item.sets * item.repsPerSet;
+      const pct    = target > 0 ? Math.round(done / target * 100) : 0;
+      const hit    = done >= target ? 'ATINGIU' : `${pct}% da meta`;
+      return `  • ${item.name}: Meta ${item.sets}×${item.repsPerSet} reps (${target} total) → Realizado: ${done} reps (${hit})`;
+    }).join('\n');
+    goalBlock = `--- METAS DO TREINO vs REALIZADO ---\n${goalLines}`;
+  }
+
+  const exLines = (report.exerciseBreakdown || [])
+    .map(e => `  • ${e.name}: ${e.reps} reps, qualidade ${e.avgQuality}%, ${e.score} pts`)
+    .join('\n');
+
+  const prompt = [
+    'Você é um personal trainer brasileiro avaliando um treino real.',
+    'Fale diretamente com o atleta em português do Brasil, de forma honesta e direta.',
+    'Não seja excessivamente elogioso. Baseie sua avaliação APENAS nos dados abaixo.',
+    'NÃO calcule nem comente sobre velocidade ou pace (reps por minuto). Foque em se as metas foram atingidas.',
+    '',
+    '--- DADOS DO ATLETA ---',
+    p.age    ? `Idade: ${p.age} anos` : null,
+    p.sex    ? `Sexo: ${p.sex === 'M' ? 'Masculino' : 'Feminino'}` : null,
+    p.weight ? `Peso: ${p.weight} kg` : null,
+    p.height ? `Altura: ${p.height} cm` : null,
+    bmi      ? `IMC: ${bmi} (${bmiLabel})` : null,
+    '',
+    '--- DADOS DO TREINO ---',
+    `Duração: ${Math.floor(duration / 60)}min ${duration % 60}s`,
+    `Pontuação total: ${report.totalScore} pts`,
+    `Total de repetições: ${report.totalReps}`,
+    `Nível: ${report.level}`,
+    exLines ? `Exercícios:\n${exLines}` : null,
+    '',
+    goalBlock,
+    '',
+    'Escreva de 3 a 5 frases curtas e diretas faladas para o atleta.',
+    goalBlock
+      ? 'Avalie principalmente se o atleta atingiu as metas do treino. Se atingiu >= 100%, elogie. Se ficou abaixo, seja honesto e motivador.'
+      : 'Avalie honestamente a performance geral.',
+    'Comente o IMC apenas se for relevante para a saúde.',
+    'Dê UMA orientação prática específica para o próximo treino.',
+    'Não use markdown, asteriscos nem listas. Só texto corrido.'
+  ].filter(l => l !== null).join('\n');
+
+  try {
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${key}`,
+      {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: { maxOutputTokens: 350, temperature: 0.75 }
+        })
+      }
+    );
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error?.message || `HTTP ${res.status}`);
+    }
+
+    const data = await res.json();
+    const text = data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
+    if (!text) throw new Error('Resposta vazia da IA');
+
+    if (aiText) aiText.textContent = text;
+    speak(text);
+  } catch (err) {
+    console.warn('[FitAI] Gemini error:', err.message);
+    if (aiText) aiText.textContent = `(Erro ao gerar avaliação: ${err.message})`;
+  }
+}
+
 // === INICIALIZAÇÃO DO APP ===
 // registra todos os event listeners do HTML – chamada uma vez quando o DOM carrega
 // OBS: os IDs aqui têm q bater com os IDs no index.html
@@ -1673,8 +1841,30 @@ function init() {
   _on('btn-cancel-recording',  'click',   cancelRecording);
 
   // relatório
-  _on('btn-new-workout',  'click', startWorkout);
-  _on('btn-view-history', 'click', loadHistory);
+  _on('btn-new-workout',  'click', () => { if (window.speechSynthesis) window.speechSynthesis.cancel(); startWorkout(); });
+  _on('btn-view-history', 'click', () => { if (window.speechSynthesis) window.speechSynthesis.cancel(); loadHistory(); });
+  _on('btn-replay-speech', 'click', () => { if (state._lastSpokenText) speak(state._lastSpokenText); });
+
+  // settings de IA
+  _on('btn-ai-settings', 'click', () => {
+    const key = _geminiKey();
+    const inp = $('gemini-key-input');
+    if (inp) inp.value = key ? '•'.repeat(Math.min(key.length, 32)) : '';
+    $('settings-backdrop').style.display = 'flex';
+  });
+  _on('btn-close-settings', 'click', () => { $('settings-backdrop').style.display = 'none'; });
+  _on('settings-backdrop',  'click', (e) => { if (e.target.id === 'settings-backdrop') $('settings-backdrop').style.display = 'none'; });
+  _on('btn-save-gemini-key', 'click', () => {
+    const val = ($('gemini-key-input').value || '').trim();
+    if (val && !val.startsWith('•')) {
+      localStorage.setItem('fitai_gemini_key', val);
+      showToast('Chave Gemini salva!', 'success');
+    } else if (!val) {
+      localStorage.removeItem('fitai_gemini_key');
+      showToast('Chave removida.', 'info');
+    }
+    $('settings-backdrop').style.display = 'none';
+  });
 
   // histórico
   _on('btn-back-history',  'click', () => showScreen('home'));

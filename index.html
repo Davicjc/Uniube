@@ -164,6 +164,24 @@
                         opacity:.45; transition:opacity .15s, background .15s; }
     .btn-exlib-delete:hover { opacity:1; background:rgba(255,80,80,.15); }
 
+    /* ── Settings Modal ───────────────────────────── */
+    .settings-backdrop { position:fixed; inset:0; background:rgba(0,0,0,.75); z-index:300;
+                         display:flex; align-items:center; justify-content:center; padding:16px; }
+    .settings-panel    { background:#1a1a26; border:1px solid #2a2a3a; border-radius:16px;
+                         padding:24px; width:100%; max-width:400px; }
+    .settings-head     { display:flex; align-items:center; justify-content:space-between; margin-bottom:20px; }
+    .settings-head h3  { font-size:18px; font-weight:800; color:#e8e8f0; }
+    .settings-note     { font-size:12px; color:#666; line-height:1.55; margin-top:8px; }
+    .settings-note strong { color:#888; }
+
+    /* ── AI Feedback Card ─────────────────────────── */
+    .ai-card           { background:#0a1a10; border:1px solid rgba(0,255,136,.25);
+                         border-radius:14px; padding:16px; margin-bottom:16px; }
+    .ai-card-head      { display:flex; align-items:center; gap:8px; font-size:13px;
+                         font-weight:700; color:#00ff88; margin-bottom:10px; }
+    .ai-card-text      { font-size:14px; color:#ccc; line-height:1.65; min-height:40px; }
+    .ai-card-actions   { display:flex; gap:8px; margin-top:12px; }
+
     /* ── Rest Overlay ──────────────────────────────── */
     .rest-overlay        { position:absolute; inset:0; background:rgba(0,0,0,.88);
                            display:flex; align-items:center; justify-content:center;
@@ -194,6 +212,11 @@
       <span class="logo-text">FitAI</span>
     </div>
     <nav class="header-nav">
+      <button class="btn-icon" id="btn-ai-settings" title="Configurações de IA">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+        </svg>
+      </button>
       <button class="btn-icon" id="btn-history" title="Histórico">
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <polyline points="12 8 12 12 14 14"/><circle cx="12" cy="12" r="10"/>
@@ -600,6 +623,18 @@
           <ul class="strengths-list" id="strengths-list"></ul>
         </div>
 
+        <!-- AI Feedback -->
+        <div class="ai-card" id="ai-feedback-section" style="display:none;">
+          <div class="ai-card-head">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M6 20v-2a6 6 0 0 1 12 0v2"/><line x1="12" y1="2" x2="12" y2="4"/></svg>
+            Avaliação por IA
+          </div>
+          <p class="ai-card-text" id="ai-feedback-text">Gerando avaliação…</p>
+          <div class="ai-card-actions">
+            <button class="btn-secondary btn-sm" id="btn-replay-speech">🔊 Ouvir novamente</button>
+          </div>
+        </div>
+
         <!-- Next workout suggestion -->
         <div class="next-workout-card">
           <div class="next-workout-label">Próximo Treino</div>
@@ -681,6 +716,31 @@
     </section>
 
   </main>
+
+  <!-- ===== SETTINGS MODAL ===== -->
+  <div class="settings-backdrop" id="settings-backdrop" style="display:none;">
+    <div class="settings-panel">
+      <div class="settings-head">
+        <h3>⚙️ Configurações de IA</h3>
+        <button class="btn-icon" id="btn-close-settings">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Chave da API Gemini</label>
+        <input type="password" id="gemini-key-input" class="form-input"
+               placeholder="Cole sua API key aqui…" autocomplete="off" />
+        <p class="settings-note">
+          Obtenha gratuitamente em <strong>aistudio.google.com</strong>.<br>
+          A chave é salva só neste dispositivo e nunca é enviada para nenhum servidor nosso.
+          Sem ela, o feedback de IA fica desativado.
+        </p>
+      </div>
+      <button class="btn-primary" id="btn-save-gemini-key" style="margin-top:16px;width:100%;">
+        Salvar chave
+      </button>
+    </div>
+  </div>
 
   <!-- ===== NOTIFICATION TOAST ===== -->
   <div class="toast" id="toast" role="alert" aria-live="polite"></div>

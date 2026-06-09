@@ -124,8 +124,15 @@ function buildSummary(data, exerciseBreakdown, level, avgQuality) {
     opening = `Treino concluído! `;
   }
 
+  // verifica se algum exercício tinha meta e calcula atingimento
+  const withGoals   = exerciseBreakdown.filter(e => e.targetReps > 0);
+  const goalsHit    = withGoals.filter(e => e.reps >= e.targetReps).length;
+  const goalSummary = withGoals.length > 0
+    ? ` Metas atingidas: ${goalsHit}/${withGoals.length}.`
+    : '';
+
   let body = `Você realizou ${totalReps} repetição${totalReps !== 1 ? 'ões' : ''} `;
-  body += `em ${durationStr}, com qualidade média de ${qualityPct}%. `;
+  body += `em ${durationStr}, com qualidade média de ${qualityPct}%.${goalSummary} `;
 
   if (exerciseCount > 1) {
     const names = exerciseBreakdown.map(e => e.name).join(', ');
@@ -194,12 +201,15 @@ function generateReport(workoutData) {
     else status = 'Melhorar';
 
     return {
-      name:       ex.name,
-      reps:       ex.reps || 0,
-      avgQuality: avgQPct,
-      score:      ex.score || 0,
+      name:         ex.name,
+      reps:         ex.reps || 0,
+      avgQuality:   avgQPct,
+      score:        ex.score || 0,
       status,
-      issues:     Array.isArray(ex.issues)
+      targetReps:   ex.targetReps   || null,
+      targetSets:   ex.targetSets   || null,
+      setsCompleted: ex.setsCompleted || 0,
+      issues:       Array.isArray(ex.issues)
         ? ex.issues
         : (ex.issues instanceof Set ? Array.from(ex.issues) : [])
     };
